@@ -1,0 +1,7 @@
+# Virtual environment
+lab_02/
+
+# Model and metrics outputs (each version is published as a GitHub Release instead)
+models/
+metrics/
+*.joblib
