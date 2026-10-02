@@ -127,7 +127,7 @@ Compared with the [original lab](https://github.com/raminmohammadi/MLOps/tree/ma
 **Pipeline**
 - **Quality gate:** a version is only released if every model reaches F1 ≥ 0.90.
 - **Tests:** 18 pytest tests (the original `test/` folder was empty). The workflow trains only if they pass.
-- **Versioning with GitHub Releases:** the original workflow committed each model into the repo. Its commits were signed with the instructor's name, and its push step lacked the write permission new repos require. Each version is now a Release with both models and their metrics, so the workflow never commits.
+- **Versioning with GitHub Releases:** the original workflow committed each model into the repo using a hard-coded git name and email, and its push needed a write permission that new repos don't grant by default. Each version is now a Release with both models and their metrics, so the workflow never commits.
 - Training runs on code changes and from a manual button. The broken daily schedule was removed.
 - MLflow was removed: the original logged to a folder that was deleted when each run finished.
 
