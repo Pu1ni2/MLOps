@@ -55,7 +55,11 @@ def fun4(x, y, z):
         z (int/float): Third number.
     Returns:
         int/float: Sum of x, y and z.
+    Raises:
+        ValueError: If x, y or z is not a number.
     """
+    if not all(isinstance(v, (int, float)) for v in (x, y, z)):
+        raise ValueError("All inputs must be numbers.")
     total_sum = x + y + z
     return total_sum
 
