@@ -71,7 +71,8 @@ jobs:
       run: python -m src.calibrate_model --timestamp "$TIMESTAMP"
 
     - name: Evaluate models on the test set
-      run: python -m src.evaluate_model --timestamp "$TIMESTAMP"
+      # Quality gate: the job stops here, and nothing is released, if any model's F1 is below 0.90
+      run: python -m src.evaluate_model --timestamp "$TIMESTAMP" --min-f1 0.90
 
     - name: Add metrics to the job summary
       if: always()

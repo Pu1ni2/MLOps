@@ -1,6 +1,7 @@
 """Evaluate every model of a version on the held-back test set and save the metrics."""
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import joblib
@@ -57,6 +58,18 @@ def find_models(model_dir, timestamp):
     return {path.stem[len(prefix):]: path for path in paths}
 
 
+def passes_quality_gate(metrics, min_f1):
+    """
+    Checks that every model of a version reached the minimum F1 score on the test set.
+    Args:
+        metrics (dict): Metrics with one entry per model under "models".
+        min_f1 (float): Lowest acceptable F1 score.
+    Returns:
+        bool: True if no model is below min_f1.
+    """
+    return all(scores["f1"] >= min_f1 for scores in metrics["models"].values())
+
+
 def metrics_to_markdown(metrics):
     """Formats the metrics as a Markdown table for the job summary and the release notes."""
     names = list(metrics["models"])
@@ -71,6 +84,10 @@ def metrics_to_markdown(metrics):
     ]
     for metric in metrics["models"][names[0]]:
         lines.append(f"| {metric} | " + " | ".join(f"{metrics['models'][name][metric]:.4f}" for name in names) + " |")
+    gate = metrics.get("quality_gate")
+    if gate:
+        result = "passed" if gate["passed"] else "FAILED"
+        lines += ["", f"Quality gate: **{result}** (every model needs F1 >= {gate['min_f1']:.2f})"]
     return "\n".join(lines) + "\n"
 
 
@@ -79,6 +96,7 @@ def main(argv=None):
     parser.add_argument("--timestamp", required=True, help="Version to evaluate, e.g. 20261002130000")
     parser.add_argument("--model-dir", default="models", help="Folder containing the model files")
     parser.add_argument("--output-dir", default="metrics", help="Folder to save the metrics in")
+    parser.add_argument("--min-f1", type=float, help="Quality gate: exit with an error if any model's F1 is below this")
     args = parser.parse_args(argv)
 
     X, y = load_data()
@@ -95,6 +113,8 @@ def main(argv=None):
             for name, path in find_models(args.model_dir, args.timestamp).items()
         },
     }
+    if args.min_f1 is not None:
+        metrics["quality_gate"] = {"min_f1": args.min_f1, "passed": passes_quality_gate(metrics, args.min_f1)}
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -102,6 +122,11 @@ def main(argv=None):
     summary = metrics_to_markdown(metrics)
     (output_dir / f"{args.timestamp}_summary.md").write_text(summary, encoding="utf-8")
     print(summary)
+
+    # The metrics files are written first, so a failed version can still be inspected
+    if args.min_f1 is not None and not metrics["quality_gate"]["passed"]:
+        print(f"Quality gate failed: a model has F1 below {args.min_f1}, so this version will not be released.")
+        sys.exit(1)
     return metrics
 
 
