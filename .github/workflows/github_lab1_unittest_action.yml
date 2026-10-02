@@ -7,11 +7,22 @@ on:
     paths:
       - "Github_Labs/Lab1/**"
       - ".github/workflows/github_lab1_unittest_action.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "Github_Labs/Lab1/**"
+      - ".github/workflows/github_lab1_unittest_action.yml"
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      # Run every Python version to the end, even if one fails, to see all failures at once
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     defaults:
       run:
         working-directory: Github_Labs/Lab1
@@ -20,21 +31,23 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
 
-    - name: Set up Python
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v7
       with:
-        python-version: "3.12"
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+        cache-dependency-path: Github_Labs/Lab1/requirements.txt
 
     - name: Install dependencies
       run: pip install -r requirements.txt
 
     - name: Run unittests
-      run: python -m unittest test.test_unittest
+      run: python -m unittest test.test_unittest -v
 
     - name: Notify on success
       if: success()
-      run: echo "Unit tests passed successfully"
+      run: echo "Unit tests passed successfully on Python ${{ matrix.python-version }}"
 
     - name: Notify on failure
       if: failure()
-      run: echo "Unit tests failed"
+      run: echo "Unit tests failed on Python ${{ matrix.python-version }}"

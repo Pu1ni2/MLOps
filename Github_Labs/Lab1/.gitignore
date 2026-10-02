@@ -6,5 +6,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 
-# Test reports
+# Test and coverage reports
 pytest-report.xml
+.coverage
+coverage.xml

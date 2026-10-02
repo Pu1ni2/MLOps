@@ -7,11 +7,22 @@ on:
     paths:
       - "Github_Labs/Lab1/**"
       - ".github/workflows/github_lab1_pytest_action.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "Github_Labs/Lab1/**"
+      - ".github/workflows/github_lab1_pytest_action.yml"
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      # Run every Python version to the end, even if one fails, to see all failures at once
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     defaults:
       run:
         working-directory: Github_Labs/Lab1
@@ -20,29 +31,34 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v7
 
-    - name: Set up Python
+    - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v7
       with:
-        python-version: "3.12"
+        python-version: ${{ matrix.python-version }}
+        cache: pip
+        cache-dependency-path: Github_Labs/Lab1/requirements.txt
 
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Run tests and generate XML report
-      run: pytest --junitxml=pytest-report.xml
-      continue-on-error: false
+    - name: Run tests with coverage and generate XML reports
+      # --cov-fail-under fails the build if less than 90% of src/ is covered by tests
+      run: pytest --junitxml=pytest-report.xml --cov=src --cov-report=term-missing --cov-report=xml --cov-fail-under=90
 
-    - name: Upload test results
+    - name: Upload test and coverage results
       if: always()
       uses: actions/upload-artifact@v7
       with:
-        name: test-results
-        path: Github_Labs/Lab1/pytest-report.xml
+        # Artifact names must be unique, so each Python version gets its own
+        name: test-results-py${{ matrix.python-version }}
+        path: |
+          Github_Labs/Lab1/pytest-report.xml
+          Github_Labs/Lab1/coverage.xml
 
     - name: Notify on success
       if: success()
-      run: echo "Tests passed successfully"
+      run: echo "Tests passed successfully on Python ${{ matrix.python-version }}"
 
     - name: Notify on failure
       if: failure()
-      run: echo "Tests failed"
+      run: echo "Tests failed on Python ${{ matrix.python-version }}"
