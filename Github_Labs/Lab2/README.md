@@ -114,6 +114,23 @@ python -m src.evaluate_model --timestamp local --min-f1 0.90
 
 Models are saved in `models/` and metrics in `metrics/`. Git ignores both folders.
 
+## My changes
+
+Compared with the [original lab](https://github.com/raminmohammadi/MLOps/tree/main/Labs/Github_Labs/Lab2):
+
+**Data and model**
+- **Real dataset:** the UCI Spambase emails replace the original's synthetic data, which had a random size (0 to 2,000 rows) on every run, so results could never be reproduced.
+- **Proper evaluation:** the original measured accuracy on the training data and "evaluated" on freshly generated random data. Models are now scored on a fixed, stratified test set they never see during training. Precision, recall, ROC AUC and the Brier score were added to F1.
+- **Real calibration:** the original README described model calibration, but the code never did it. A calibrated random forest (`CalibratedClassifierCV`, isotonic, 5-fold) is now trained and compared. It lowers the Brier score from 0.043 to 0.041.
+- Models are saved compressed, which brings the random forest from 9.2 MB down to 2.0 MB.
+
+**Pipeline**
+- **Quality gate:** a version is only released if every model reaches F1 ≥ 0.90.
+- **Tests:** 18 pytest tests (the original `test/` folder was empty). The workflow trains only if they pass.
+- **Versioning with GitHub Releases:** the original workflow committed each model into the repo. Its commits were signed with the instructor's name, and its push step lacked the write permission new repos require. Each version is now a Release with both models and their metrics, so the workflow never commits.
+- Training runs on code changes and from a manual button. The broken daily schedule was removed.
+- MLflow was removed: the original logged to a folder that was deleted when each run finished.
+
 ## Dataset credit
 
 Spambase by M. Hopkins, E. Reeber, G. Forman and J. Suermondt (1999), [UCI Machine Learning Repository](https://doi.org/10.24432/C53G6X), licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). The data was converted to CSV with a header row, and the 6 character-frequency columns were renamed for readability (for example `char_freq_!` became `char_freq_exclamation`).
