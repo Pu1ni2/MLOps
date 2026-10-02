@@ -66,3 +66,30 @@ pip install -r requirements.txt
 pytest --cov=src --cov-report=term-missing
 python -m unittest test.test_unittest -v
 ```
+
+## My changes
+
+Compared with the [original lab](https://github.com/raminmohammadi/MLOps/tree/main/Labs/Github_Labs/Lab1):
+
+**Code**
+- New functions: `fun5` (division, raises `ZeroDivisionError` when dividing by 0), `fun6` (power) and `fun7` (average of a list).
+- Input validation in `fun4`. The original had none, so `fun4(1, "2", 3)` crashed with a `TypeError` instead of giving a clear error.
+
+**Tests**
+- Error-case tests. The original only tested correct inputs. Now every function must reject bad input:
+  - in pytest, one parametrized test covers 5 functions × 3 bad inputs (15 cases), using `pytest.raises`;
+  - in unittest, the same checks use `assertRaises` and `subTest`.
+- Decimal results are compared with `pytest.approx` / `assertAlmostEqual`.
+- The suite grew from 8 to 39 pytest tests, with 100% code coverage.
+
+**CI pipeline**
+- Tests run on Python 3.11, 3.12, 3.13 and 3.14 in parallel.
+- They also run on pull requests, and a manual "Run workflow" button was added.
+- Coverage gate: the build fails if coverage drops below 90%.
+- Each Python version uploads its JUnit test report and coverage XML. pip downloads are cached.
+- The workflows run inside `Github_Labs/Lab1` and only trigger when this lab changes, so the repo can hold several labs.
+
+**Fixes to the original workflows**
+- The original used `branches` and `branches-ignore` on the same trigger, which GitHub rejects, and had a `run-nam` typo.
+- The actions were updated from v2 to v7. GitHub now automatically fails `upload-artifact@v2`.
+- Python 3.8 (end-of-life) was replaced by current versions.
