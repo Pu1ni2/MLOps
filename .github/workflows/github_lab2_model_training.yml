@@ -67,7 +67,10 @@ jobs:
     - name: Train model
       run: python -m src.train_model --timestamp "$TIMESTAMP"
 
-    - name: Evaluate model on the test set
+    - name: Train calibrated model
+      run: python -m src.calibrate_model --timestamp "$TIMESTAMP"
+
+    - name: Evaluate models on the test set
       run: python -m src.evaluate_model --timestamp "$TIMESTAMP"
 
     - name: Add metrics to the job summary

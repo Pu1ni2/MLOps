@@ -5,12 +5,19 @@ from pathlib import Path
 
 import joblib
 import sklearn
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    brier_score_loss,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 from src.data import load_data, split_data
 
 # Readable names for the metrics table
-MODEL_LABELS = {"rf": "Random forest"}
+MODEL_LABELS = {"rf": "Random forest", "rf_calibrated": "Calibrated random forest"}
 
 
 def evaluate(model, X_test, y_test):
@@ -21,7 +28,8 @@ def evaluate(model, X_test, y_test):
         X_test (DataFrame): Test features.
         y_test (Series): Test labels.
     Returns:
-        dict: accuracy, precision, recall, f1 and roc_auc, each between 0 and 1 (higher is better).
+        dict: accuracy, precision, recall, f1 and roc_auc (higher is better), and brier
+            (average squared error of the spam probabilities, lower is better). All are between 0 and 1.
     """
     y_pred = model.predict(X_test)
     y_proba = model.predict_proba(X_test)[:, 1]  # predicted probability of spam
@@ -31,6 +39,7 @@ def evaluate(model, X_test, y_test):
         "recall": recall_score(y_test, y_pred),
         "f1": f1_score(y_test, y_pred),
         "roc_auc": roc_auc_score(y_test, y_proba),
+        "brier": brier_score_loss(y_test, y_proba),
     }
     return {name: round(float(value), 4) for name, value in scores.items()}
 
