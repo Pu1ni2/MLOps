@@ -1,0 +1,100 @@
+name: Github Lab2 - Model Training
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Github_Labs/Lab2/**"
+      # README edits should not create a new model version
+      - "!Github_Labs/Lab2/**/*.md"
+      - ".github/workflows/github_lab2_model_training.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: Github_Labs/Lab2
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: Github_Labs/Lab2/requirements.txt
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Run tests
+      run: pytest -v
+
+  train:
+    # Only train a new model version if all tests passed
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # needed to publish a GitHub Release
+    defaults:
+      run:
+        working-directory: Github_Labs/Lab2
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v7
+
+    - name: Set up Python
+      uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: Github_Labs/Lab2/requirements.txt
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Generate version timestamp
+      run: echo "TIMESTAMP=$(date -u '+%Y%m%d%H%M%S')" >> "$GITHUB_ENV"
+
+    - name: Train model
+      run: python -m src.train_model --timestamp "$TIMESTAMP"
+
+    - name: Evaluate model on the test set
+      run: python -m src.evaluate_model --timestamp "$TIMESTAMP"
+
+    - name: Add metrics to the job summary
+      if: always()
+      run: |
+        if [ -f "metrics/${TIMESTAMP}_summary.md" ]; then
+          cat "metrics/${TIMESTAMP}_summary.md" >> "$GITHUB_STEP_SUMMARY"
+        fi
+
+    - name: Upload model and metrics
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: lab2-model-${{ env.TIMESTAMP }}
+        path: |
+          Github_Labs/Lab2/models/
+          Github_Labs/Lab2/metrics/
+        if-no-files-found: warn
+
+    - name: Publish model version as a GitHub Release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        gh release create "lab2-model-$TIMESTAMP" \
+          models/model_${TIMESTAMP}_*.joblib \
+          "metrics/${TIMESTAMP}_metrics.json" \
+          --title "Lab2 model $TIMESTAMP" \
+          --notes-file "metrics/${TIMESTAMP}_summary.md" \
+          --target "$GITHUB_SHA"
