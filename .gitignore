@@ -1,0 +1,13 @@
+# Virtual environments (any lab; each lab's own .gitignore can add its venv name)
+.venv/
+venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Editor and OS files
+.vscode/
+.DS_Store
+Thumbs.db
