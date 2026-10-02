@@ -54,6 +54,33 @@ class TestCalculator(unittest.TestCase):
         self.assertEqual(calculator.fun7([-1, 1]), 0)
         self.assertAlmostEqual(calculator.fun7([0.1, 0.2]), 0.15)
 
+    # Error cases: functions must reject bad input instead of returning a wrong answer.
+
+    def test_two_input_functions_reject_non_numbers(self):
+        funcs = [calculator.fun1, calculator.fun2, calculator.fun3, calculator.fun5, calculator.fun6]
+        for func in funcs:
+            for bad in ["2", None, [1, 2]]:
+                # subTest reports each failing combination separately instead of stopping at the first
+                with self.subTest(func=func.__name__, bad=bad):
+                    with self.assertRaises(ValueError):
+                        func(bad, 3)
+                    with self.assertRaises(ValueError):
+                        func(3, bad)
+
+    def test_fun4_rejects_non_numbers(self):
+        with self.assertRaises(ValueError):
+            calculator.fun4(1, "2", 3)
+
+    def test_fun5_divide_by_zero(self):
+        with self.assertRaises(ZeroDivisionError):
+            calculator.fun5(5, 0)
+
+    def test_fun7_rejects_bad_input(self):
+        for bad in [[], [1, "2"], "123", None]:
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    calculator.fun7(bad)
+
 
 if __name__ == '__main__':
     unittest.main()
