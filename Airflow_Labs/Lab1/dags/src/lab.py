@@ -18,8 +18,9 @@ from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import MinMaxScaler
 from threadpoolctl import threadpool_limits
 
-# The 3 customer columns used for clustering
-FEATURES = ["BALANCE", "PURCHASES", "CREDIT_LIMIT"]
+# Default customer columns to cluster on (can be changed when triggering the DAG).
+# test.csv only has these 3 columns, so any chosen subset must come from them.
+FEATURES =["BALANCE", "PURCHASES", "CREDIT_LIMIT"]
 
 # K-Means settings; random_state makes every run give the same result
 KMEANS_SETTINGS = {"init": "random", "n_init": 10, "max_iter": 300, "random_state": 42}
@@ -67,16 +68,17 @@ def load_data(source_csv, out_dir):
     return raw_path
 
 
-def validate_data(raw_csv, out_dir, min_rows=MIN_ROWS):
+def validate_data(raw_csv, out_dir, features=FEATURES, min_rows=MIN_ROWS):
     """
     Checks the raw data before any modelling and saves a clean copy.
     Raises ValueError with a clear message if the data can't be used:
-      - a FEATURES column is missing
-      - a FEATURES column is not numeric
+      - a feature column is missing
+      - a feature column is not numeric
       - fewer than min_rows rows are left after dropping incomplete rows
     Args:
         raw_csv (str): Path returned by load_data.
         out_dir (str): This run's folder.
+        features (list): Columns to cluster on.
         min_rows (int): Smallest acceptable number of clean rows.
     Returns:
         dict: {"clean_path": <out_dir>/clean.csv, "rows_in": int, "rows_out": int,
@@ -84,17 +86,17 @@ def validate_data(raw_csv, out_dir, min_rows=MIN_ROWS):
     """
     df = pd.read_csv(raw_csv)
 
-    missing_columns = [col for col in FEATURES if col not in df.columns]
+    missing_columns = [col for col in features if col not in df.columns]
     if missing_columns:
         raise ValueError(f"Missing columns: {missing_columns}")
 
-    for col in FEATURES:
+    for col in features:
         if not pd.api.types.is_numeric_dtype(df[col]):
             raise ValueError(f"Column {col} must be numeric, but has type {df[col].dtype}")
 
-    missing = {col: int(df[col].isna().sum()) for col in FEATURES}
+    missing = {col: int(df[col].isna().sum()) for col in features}
 
-    clean = df[FEATURES].dropna()
+    clean = df[features].dropna()
     if len(clean) < min_rows:
         raise ValueError(f"Only {len(clean)} complete rows left, need at least {min_rows}")
 
@@ -104,26 +106,27 @@ def validate_data(raw_csv, out_dir, min_rows=MIN_ROWS):
     return {"clean_path": clean_path, "rows_in": len(df), "rows_out": len(clean), "missing": missing}
 
 
-def preprocess(raw_csv, out_dir):
+def preprocess(raw_csv, out_dir, features=FEATURES):
     """
-    Keeps the FEATURES columns, drops rows with missing values, and scales
+    Keeps the feature columns, drops rows with missing values, and scales
     every column to the range 0-1.
     Saves the scaled data AND the fitted scaler, because predict() needs the
     same scaler later.
     Args:
-        raw_csv (str): Path returned by load_data.
+        raw_csv (str): Path of the (validated) customer data.
         out_dir (str): This run's folder.
+        features (list): Columns to cluster on.
     Returns:
         dict: {"data_path": <out_dir>/scaled.csv, "scaler_path": <out_dir>/scaler.joblib}
     """
-    df = pd.read_csv(raw_csv)[FEATURES].dropna()
+    df = pd.read_csv(raw_csv)[features].dropna()
 
     # fit = learn each column's min and max; transform = squeeze the column into 0-1
     scaler = MinMaxScaler()
     scaled = scaler.fit_transform(df)
 
     data_path = os.path.join(out_dir, "scaled.csv")
-    pd.DataFrame(scaled, columns=FEATURES).to_csv(data_path, index=False)
+    pd.DataFrame(scaled, columns=features).to_csv(data_path, index=False)
 
     scaler_path = os.path.join(out_dir, "scaler.joblib")
     joblib.dump(scaler, scaler_path)
@@ -199,7 +202,7 @@ def passes_quality_gate(silhouette, min_silhouette=MIN_SILHOUETTE):
     return silhouette >= min_silhouette
 
 
-def promote_model(best, scaler_path, latest_dir):
+def promote_model(best, scaler_path, latest_dir, features=FEATURES):
     """
     Makes the chosen model the official one: copies the model and the scaler into
     latest_dir and writes metrics.json next to them. Replaces the previous latest model.
@@ -207,6 +210,8 @@ def promote_model(best, scaler_path, latest_dir):
         best (dict): Result of select_best_k.
         scaler_path (str): Saved scaler from preprocess.
         latest_dir (str): Folder that always holds the current official model.
+        features (list): Columns the model was trained on (recorded in metrics.json,
+            because anyone using the model must give it the same columns).
     Returns:
         dict: {"model_path": <latest_dir>/model.joblib, "scaler_path": <latest_dir>/scaler.joblib,
                "metrics_path": <latest_dir>/metrics.json}
@@ -218,13 +223,14 @@ def promote_model(best, scaler_path, latest_dir):
     shutil.copy(scaler_path, latest_scaler_path)
 
     metrics = {key: best[key] for key in ("best_k", "method", "silhouette", "sse")}
+    metrics["features"] = list(features)
     metrics["source_model"] = best["model_path"]
     metrics_path = save_json(metrics, os.path.join(latest_dir, "metrics.json"))
 
     return {"model_path": model_path, "scaler_path": latest_scaler_path, "metrics_path": metrics_path}
 
 
-def predict(model_path, scaler_path, test_csv):
+def predict(model_path, scaler_path, test_csv, features=FEATURES):
     """
     Assigns each customer in test_csv to a cluster.
     The test data is scaled with the SAME scaler that was fitted on the
@@ -233,6 +239,7 @@ def predict(model_path, scaler_path, test_csv):
         model_path (str): Saved model of the chosen k (from select_best_k).
         scaler_path (str): Saved scaler from preprocess.
         test_csv (str): Customers to assign (dags/data/test.csv).
+        features (list): Columns the model was trained on.
     Returns:
         list: One cluster number per customer, as plain ints.
     """
@@ -240,32 +247,33 @@ def predict(model_path, scaler_path, test_csv):
     scaler = joblib.load(scaler_path)
 
     # transform only, NOT fit_transform: reuse the training data's min and max
-    test = pd.read_csv(test_csv)[FEATURES]
-    scaled = pd.DataFrame(scaler.transform(test), columns=FEATURES)
+    test = pd.read_csv(test_csv)[features]
+    scaled = pd.DataFrame(scaler.transform(test), columns=features)
 
     clusters = model.predict(scaled)
     return [int(c) for c in clusters]
 
 
-def profile_clusters(model_path, scaler_path, data_csv, out_dir):
+def profile_clusters(model_path, scaler_path, data_csv, out_dir, features=FEATURES):
     """
-    Describes each cluster in plain numbers: how many customers it has and their
-    average BALANCE, PURCHASES and CREDIT_LIMIT. Saves it as cluster_profile.csv.
+    Describes each cluster in plain numbers: how many customers it has and the
+    average of each feature (e.g. BALANCE). Saves it as cluster_profile.csv.
     Args:
         model_path (str): The promoted model.
         scaler_path (str): The promoted scaler.
         data_csv (str): Clean customer data (unscaled, so the averages are in real money).
         out_dir (str): This run's folder.
+        features (list): Columns the model was trained on.
     Returns:
         str: Path of <out_dir>/cluster_profile.csv
     """
     model = joblib.load(model_path)
     scaler = joblib.load(scaler_path)
 
-    data = pd.read_csv(data_csv)[FEATURES]
-    data["cluster"] = model.predict(pd.DataFrame(scaler.transform(data), columns=FEATURES))
+    data = pd.read_csv(data_csv)[features]
+    data["cluster"] = model.predict(pd.DataFrame(scaler.transform(data), columns=features))
 
-    profile = data.groupby("cluster")[FEATURES].mean().round(2)
+    profile = data.groupby("cluster")[features].mean().round(2)
     profile.insert(0, "customers", data.groupby("cluster").size())
 
     profile_path = os.path.join(out_dir, "cluster_profile.csv")

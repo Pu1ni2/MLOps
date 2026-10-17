@@ -4,13 +4,15 @@ Customer segmentation pipeline (Airflow 3, TaskFlow API).
 Groups credit-card customers into clusters with K-Means. Each task writes its
 output to a file in this run's folder and passes only the file PATH to the
 next task, so Airflow's database (XCom) only stores short strings.
+The k range, quality bar and features are Params: form fields shown when the
+DAG is triggered, so every run can use different settings without code changes.
 """
 import os
 import re
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import TriggerRule, dag, task, get_current_context
+from airflow.sdk import Param, TriggerRule, dag, task, get_current_context
 from airflow.sdk.exceptions import AirflowFailException
 
 from src import lab
@@ -35,6 +37,14 @@ def run_folder():
     return folder
 
 
+def setting(name):
+    """
+    Returns one Param's value for this run: what was entered in the trigger form,
+    or the default if it was left unchanged. Only works inside a running task.
+    """
+    return get_current_context()["params"][name]
+
+
 @dag(
     dag_id="customer_segmentation",
     start_date=pendulum.datetime(2026, 1, 1, tz="UTC"),
@@ -46,6 +56,44 @@ def run_folder():
         "owner": "Sai Punith Kolla",
         "retries": 2,
         "retry_delay": timedelta(seconds=30),
+    },
+    # Form fields shown when you click Trigger. Airflow checks every value against
+    # these rules (type, minimum, maximum, ...) before the run is allowed to start.
+    params={
+        "k_min": Param(
+            lab.K_MIN,
+            type="integer",
+            minimum=2,
+            maximum=20,
+            title="Smallest number of clusters",
+            description="At least 2, because the silhouette score needs 2 or more clusters.",
+        ),
+        "k_max": Param(
+            lab.K_MAX,
+            type="integer",
+            minimum=3,
+            maximum=20,
+            title="Largest number of clusters",
+            description="Every k from the smallest to the largest is trained as its own parallel task.",
+        ),
+        "min_silhouette": Param(
+            lab.MIN_SILHOUETTE,
+            type="number",
+            minimum=-1,
+            maximum=1,
+            title="Quality bar (minimum silhouette score)",
+            description="The new model only replaces the official one if its silhouette score is at least this.",
+        ),
+        "features": Param(
+            lab.FEATURES,
+            type="array",
+            examples=lab.FEATURES,
+            items={"type": "string", "enum": lab.FEATURES},
+            minItems=2,
+            uniqueItems=True,
+            title="Customer columns to cluster on",
+            description="Pick at least 2.",
+        ),
     },
 )
 def customer_segmentation():
@@ -60,7 +108,7 @@ def customer_segmentation():
     def validate_data(raw_path):
         """Check the data before modelling. Bad data fails the run at once, with no retries."""
         try:
-            report = lab.validate_data(raw_path, run_folder())
+            report = lab.validate_data(raw_path, run_folder(), features=setting("features"))
         except ValueError as err:
             # Bad data won't fix itself, so fail now instead of retrying
             raise AirflowFailException(f"Data check failed: {err}") from err
@@ -70,13 +118,19 @@ def customer_segmentation():
     @task
     def preprocess(validated):
         """Scale the validated data; return the paths of the scaled data and the scaler."""
-        preprocessed_data = lab.preprocess(validated["clean_path"], run_folder())
+        preprocessed_data = lab.preprocess(validated["clean_path"], run_folder(), features=setting("features"))
         return preprocessed_data
 
     @task
     def make_k_values():
         """List the numbers of clusters to try. Each one becomes its own parallel task."""
-        return list(range(lab.K_MIN, lab.K_MAX + 1))
+        k_min, k_max = setting("k_min"), setting("k_max")
+        if k_min >= k_max:
+            # A wrong setting won't fix itself either, so fail now instead of retrying
+            raise AirflowFailException(f"k_min ({k_min}) must be smaller than k_max ({k_max})")
+        k_values = list(range(k_min, k_max + 1))
+        print(f"Trying k = {k_values}")
+        return k_values
 
     # map_index_template labels each parallel copy in the UI as k=2, k=3, ... instead of 0, 1, ...
     @task(map_index_template="{{ k_label }}")
@@ -98,25 +152,29 @@ def customer_segmentation():
     @task.branch
     def quality_gate(best):
         """Decide which path runs next: promote the model, or flag it as too weak."""
-        if lab.passes_quality_gate(best["silhouette"], lab.MIN_SILHOUETTE):
-            print(f"Silhouette {best['silhouette']:.3f} >= {lab.MIN_SILHOUETTE}: promoting the model")
+        min_silhouette = setting("min_silhouette")
+        if lab.passes_quality_gate(best["silhouette"], min_silhouette):
+            print(f"Silhouette {best['silhouette']:.3f} >= {min_silhouette}: promoting the model")
             return "promote_model"
-        print(f"Silhouette {best['silhouette']:.3f} < {lab.MIN_SILHOUETTE}: flagging the model as low quality")
+        print(f"Silhouette {best['silhouette']:.3f} < {min_silhouette}: flagging the model as low quality")
         return "flag_low_quality"
 
     @task
     def promote_model(best, prepared):
         """Make the chosen model the official latest model."""
-        promoted = lab.promote_model(best, prepared["scaler_path"], LATEST_DIR)
+        promoted = lab.promote_model(best, prepared["scaler_path"], LATEST_DIR, features=setting("features"))
         print(f"Promoted the k={best['best_k']} model to {LATEST_DIR}")
         return promoted
 
     @task
     def predict(promoted, validated):
         """Use the promoted model: assign the test customers to clusters and describe every cluster."""
-        clusters = lab.predict(promoted["model_path"], promoted["scaler_path"], os.path.join(DATA_DIR, "test.csv"))
+        features = setting("features")
+        clusters = lab.predict(
+            promoted["model_path"], promoted["scaler_path"], os.path.join(DATA_DIR, "test.csv"), features=features
+        )
         profile_path = lab.profile_clusters(
-            promoted["model_path"], promoted["scaler_path"], validated["clean_path"], run_folder()
+            promoted["model_path"], promoted["scaler_path"], validated["clean_path"], run_folder(), features=features
         )
         print(f"Clusters: {clusters}")
         print(f"Cluster profile saved to {profile_path}")
@@ -125,7 +183,7 @@ def customer_segmentation():
     @task
     def flag_low_quality(best):
         """Record why the model was not promoted. The previous latest model stays in place."""
-        report_path = lab.write_low_quality_report(best, lab.MIN_SILHOUETTE, run_folder())
+        report_path = lab.write_low_quality_report(best, setting("min_silhouette"), run_folder())
         print(f"Model NOT promoted, see {report_path}")
         return report_path
 
@@ -136,10 +194,10 @@ def customer_segmentation():
         # xcom_pull reads another task's result; it's None when that task was skipped
         predictions = get_current_context()["ti"].xcom_pull(task_ids="predict")
         summary = {
+            "settings": {name: setting(name) for name in ("k_min", "k_max", "min_silhouette", "features")},
             "best_k": best["best_k"],
             "method": best["method"],
             "silhouette": best["silhouette"],
-            "min_silhouette": lab.MIN_SILHOUETTE,
             "decision": "promoted" if predictions else "flagged as low quality",
             "test_clusters": predictions["test_clusters"] if predictions else None,
         }
