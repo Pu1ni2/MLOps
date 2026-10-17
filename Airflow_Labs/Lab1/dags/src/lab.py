@@ -1,88 +1,119 @@
-import pandas as pd
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.cluster import KMeans
-from kneed import KneeLocator
-import pickle
+"""
+Customer segmentation logic: plain Python functions, no Airflow.
+
+Every function reads its input from a file, writes its output to a file, and
+returns the path(s). The Airflow tasks only pass these short paths to each
+other, never the data itself. Keeping Airflow out of this file also means it
+can be tested on its own.
+"""
 import os
-import base64
+import shutil
 
-def load_data():
+import joblib
+import pandas as pd
+from kneed import KneeLocator
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import MinMaxScaler
+
+# The 3 customer columns used for clustering
+FEATURES = ["BALANCE", "PURCHASES", "CREDIT_LIMIT"]
+
+# K-Means settings; random_state makes every run give the same result
+KMEANS_SETTINGS = {"init": "random", "n_init": 10, "max_iter": 300, "random_state": 42}
+
+
+def load_data(source_csv, out_dir):
     """
-    Loads data from a CSV file, serializes it, and returns the serialized data.
+    Copies the raw customer CSV into this run's folder, so every run keeps
+    the exact data it used.
+    Args:
+        source_csv (str): Path of the original CSV (dags/data/file.csv).
+        out_dir (str): This run's folder.
     Returns:
-        str: Base64-encoded serialized data (JSON-safe).
+        str: Path of the copy: <out_dir>/raw.csv
     """
-    print("We are here")
-    df = pd.read_csv(os.path.join(os.path.dirname(__file__), "../data/file.csv"))
-    serialized_data = pickle.dumps(df)                    # bytes
-    return base64.b64encode(serialized_data).decode("ascii")  # JSON-safe string
+    raw_path = os.path.join(out_dir, "raw.csv")
+    shutil.copy(source_csv, raw_path)
+    return raw_path
 
-def data_preprocessing(data_b64: str):
+
+def preprocess(raw_csv, out_dir):
     """
-    Deserializes base64-encoded pickled data, performs preprocessing,
-    and returns base64-encoded pickled clustered data.
+    Keeps the FEATURES columns, drops rows with missing values, and scales
+    every column to the range 0-1.
+    Saves the scaled data AND the fitted scaler, because predict() needs the
+    same scaler later.
+    Args:
+        raw_csv (str): Path returned by load_data.
+        out_dir (str): This run's folder.
+    Returns:
+        dict: {"data_path": <out_dir>/scaled.csv, "scaler_path": <out_dir>/scaler.joblib}
     """
-    # decode -> bytes -> DataFrame
-    data_bytes = base64.b64decode(data_b64)
-    df = pickle.loads(data_bytes)
+    df = pd.read_csv(raw_csv)[FEATURES].dropna()
 
-    df = df.dropna()
-    clustering_data = df[["BALANCE", "PURCHASES", "CREDIT_LIMIT"]]
+    # fit = learn each column's min and max; transform = squeeze the column into 0-1
+    scaler = MinMaxScaler()
+    scaled = scaler.fit_transform(df)
 
-    min_max_scaler = MinMaxScaler()
-    clustering_data_minmax = min_max_scaler.fit_transform(clustering_data)
+    data_path = os.path.join(out_dir, "scaled.csv")
+    pd.DataFrame(scaled, columns=FEATURES).to_csv(data_path, index=False)
 
-    # bytes -> base64 string for XCom
-    clustering_serialized_data = pickle.dumps(clustering_data_minmax)
-    return base64.b64encode(clustering_serialized_data).decode("ascii")
+    scaler_path = os.path.join(out_dir, "scaler.joblib")
+    joblib.dump(scaler, scaler_path)
+
+    return {"data_path": data_path, "scaler_path": scaler_path}
 
 
-def build_save_model(data_b64: str, filename: str):
+def build_model(data_path, out_dir, max_k=49):
     """
-    Builds a KMeans model on the preprocessed data and saves it.
-    Returns the SSE list (JSON-serializable).
+    Tries k = 1..max_k clusters, picks the best k with the elbow method, then
+    trains and saves the model for THAT k.
+    Args:
+        data_path (str): Scaled data CSV from preprocess.
+        out_dir (str): This run's folder.
+        max_k (int): Largest number of clusters to try.
+    Returns:
+        dict: {"best_k": int, "model_path": <out_dir>/model.joblib}
     """
-    # decode -> bytes -> numpy array
-    data_bytes = base64.b64decode(data_b64)
-    df = pickle.loads(data_bytes)
+    data = pd.read_csv(data_path)
+    ks = range(1, max_k + 1)
 
-    kmeans_kwargs = {"init": "random", "n_init": 10, "max_iter": 300, "random_state": 42}
+    # SSE (inertia_) = how far customers are from their cluster centre; it always drops as k grows
     sse = []
-    for k in range(1, 50):
-        kmeans = KMeans(n_clusters=k, **kmeans_kwargs)
-        kmeans.fit(df)
+    for k in ks:
+        kmeans = KMeans(n_clusters=k, **KMEANS_SETTINGS)
+        kmeans.fit(data)
         sse.append(kmeans.inertia_)
 
-    # NOTE: This saves the last-fitted model (k=49), matching your original intent.
-    output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "model")
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, filename)
-    with open(output_path, "wb") as f:
-        pickle.dump(kmeans, f)
+    # The elbow: the k after which adding more clusters stops reducing SSE by much
+    best_k = KneeLocator(ks, sse, curve="convex", direction="decreasing").elbow
 
-    return sse  # list is JSON-safe
+    model = KMeans(n_clusters=best_k, **KMEANS_SETTINGS).fit(data)
+    model_path = os.path.join(out_dir, "model.joblib")
+    joblib.dump(model, model_path)
+
+    # int(): Airflow can only pass plain Python values between tasks, not numpy numbers
+    return {"best_k": int(best_k), "model_path": model_path}
 
 
-def load_model_elbow(filename: str, sse: list):
+def predict(model_path, scaler_path, test_csv):
     """
-    Loads the saved model and uses the elbow method to report k.
-    Returns the first prediction (as a plain int) for test.csv.
+    Assigns each customer in test_csv to a cluster.
+    The test data is scaled with the SAME scaler that was fitted on the
+    training data, so it's on the same 0-1 scale the model learned.
+    Args:
+        model_path (str): Saved model from build_model.
+        scaler_path (str): Saved scaler from preprocess.
+        test_csv (str): Customers to assign (dags/data/test.csv).
+    Returns:
+        list: One cluster number per customer, as plain ints.
     """
-    # load the saved (last-fitted) model
-    output_path = os.path.join(os.path.dirname(__file__), "../model", filename)
-    loaded_model = pickle.load(open(output_path, "rb"))
+    model = joblib.load(model_path)
+    scaler = joblib.load(scaler_path)
 
-    # elbow for information/logging
-    kl = KneeLocator(range(1, 50), sse, curve="convex", direction="decreasing")
-    print(f"Optimal no. of clusters: {kl.elbow}")
+    # transform only, NOT fit_transform: reuse the training data's min and max
+    test = pd.read_csv(test_csv)[FEATURES]
+    scaled = pd.DataFrame(scaler.transform(test), columns=FEATURES)
 
-    # predict on raw test data (matches your original code)
-    df = pd.read_csv(os.path.join(os.path.dirname(__file__), "../data/test.csv"))
-    pred = loaded_model.predict(df)[0]
-
-    # ensure JSON-safe return
-    try:
-        return int(pred)
-    except Exception:
-        # if not numeric, still return a JSON-friendly version
-        return pred.item() if hasattr(pred, "item") else pred
+    clusters = model.predict(scaled)
+    return [int(c) for c in clusters]
