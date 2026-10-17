@@ -21,6 +21,9 @@ FEATURES = ["BALANCE", "PURCHASES", "CREDIT_LIMIT"]
 # K-Means settings; random_state makes every run give the same result
 KMEANS_SETTINGS = {"init": "random", "n_init": 10, "max_iter": 300, "random_state": 42}
 
+# Fewer clean rows than this means something is wrong with the data
+MIN_ROWS = 100
+
 
 def load_data(source_csv, out_dir):
     """
@@ -35,6 +38,43 @@ def load_data(source_csv, out_dir):
     raw_path = os.path.join(out_dir, "raw.csv")
     shutil.copy(source_csv, raw_path)
     return raw_path
+
+
+def validate_data(raw_csv, out_dir, min_rows=MIN_ROWS):
+    """
+    Checks the raw data before any modelling and saves a clean copy.
+    Raises ValueError with a clear message if the data can't be used:
+      - a FEATURES column is missing
+      - a FEATURES column is not numeric
+      - fewer than min_rows rows are left after dropping incomplete rows
+    Args:
+        raw_csv (str): Path returned by load_data.
+        out_dir (str): This run's folder.
+        min_rows (int): Smallest acceptable number of clean rows.
+    Returns:
+        dict: {"clean_path": <out_dir>/clean.csv, "rows_in": int, "rows_out": int,
+               "missing": {column: number of missing values}}
+    """
+    df = pd.read_csv(raw_csv)
+
+    missing_columns = [col for col in FEATURES if col not in df.columns]
+    if missing_columns:
+        raise ValueError(f"Missing columns: {missing_columns}")
+
+    for col in FEATURES:
+        if not pd.api.types.is_numeric_dtype(df[col]):
+            raise ValueError(f"Column {col} must be numeric, but has type {df[col].dtype}")
+
+    missing = {col: int(df[col].isna().sum()) for col in FEATURES}
+
+    clean = df[FEATURES].dropna()
+    if len(clean) < min_rows:
+        raise ValueError(f"Only {len(clean)} complete rows left, need at least {min_rows}")
+
+    clean_path = os.path.join(out_dir, "clean.csv")
+    clean.to_csv(clean_path, index=False)
+
+    return {"clean_path": clean_path, "rows_in": len(df), "rows_out": len(clean), "missing": missing}
 
 
 def preprocess(raw_csv, out_dir):

@@ -7,9 +7,11 @@ next task, so Airflow's database (XCom) only stores short strings.
 """
 import os
 import re
+from datetime import timedelta
 
 import pendulum
 from airflow.sdk import dag, task, get_current_context
+from airflow.sdk.exceptions import AirflowFailException
 
 from src import lab
 
@@ -37,7 +39,12 @@ def run_folder():
     schedule=None,  # only runs when triggered
     catchup=False,
     tags=["lab1", "clustering"],
-    default_args={"owner": "Sai Punith Kolla"},
+    # Applied to every task: on failure, try up to 2 more times, 30 seconds apart
+    default_args={
+        "owner": "Sai Punith Kolla",
+        "retries": 2,
+        "retry_delay": timedelta(seconds=30),
+    },
 )
 def customer_segmentation():
 
@@ -48,9 +55,20 @@ def customer_segmentation():
         return lab_data_path
 
     @task
-    def preprocess(raw_path):
-        """Select, clean and scale the data; return the paths of the scaled data and the scaler."""
-        preprocessed_data = lab.preprocess(raw_path, run_folder())
+    def validate_data(raw_path):
+        """Check the data before modelling. Bad data fails the run at once, with no retries."""
+        try:
+            report = lab.validate_data(raw_path, run_folder())
+        except ValueError as err:
+            # Bad data won't fix itself, so fail now instead of retrying
+            raise AirflowFailException(f"Data check failed: {err}") from err
+        print(f"Kept {report['rows_out']} of {report['rows_in']} rows. Missing values: {report['missing']}")
+        return report
+
+    @task
+    def preprocess(validated):
+        """Scale the validated data; return the paths of the scaled data and the scaler."""
+        preprocessed_data = lab.preprocess(validated["clean_path"], run_folder())
         return preprocessed_data
 
     @task
@@ -69,7 +87,8 @@ def customer_segmentation():
 
     # Passing one task's result into another task creates the arrow between them
     raw = load_data()
-    prepared = preprocess(raw)
+    validated = validate_data(raw)
+    prepared = preprocess(validated)
     model_info = build_model(prepared)
     predict(model_info, prepared)
 
