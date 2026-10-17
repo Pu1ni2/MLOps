@@ -1,0 +1,11 @@
+# Created by Airflow while it runs
+logs/
+config/
+plugins/
+working_data/
+
+# Model file the original DAG writes inside dags/ (an output, not source code)
+dags/model/
+
+# Local settings
+.env
