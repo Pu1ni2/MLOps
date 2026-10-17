@@ -6,6 +6,7 @@ returns the path(s). The Airflow tasks only pass these short paths to each
 other, never the data itself. Keeping Airflow out of this file also means it
 can be tested on its own.
 """
+import json
 import os
 import shutil
 
@@ -38,6 +39,17 @@ SILHOUETTE_SAMPLE = 2000
 # task, so 9 parallel tasks fight over the CPU. Measured on 9 parallel models:
 # 26.7 s with all threads per task vs 0.5 s with 1 thread per task, same results.
 TRAIN_THREADS = 1
+
+# Quality gate: a model is only promoted if its silhouette score is at least this.
+# Silhouette runs from -1 to 1; above about 0.25 the clusters have real structure, above 0.5 strong structure.
+MIN_SILHOUETTE = 0.40
+
+
+def save_json(data, path):
+    """Writes a dict to a JSON file and returns the path."""
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+    return path
 
 
 def load_data(source_csv, out_dir):
@@ -182,6 +194,36 @@ def select_best_k(results, out_dir):
     }
 
 
+def passes_quality_gate(silhouette, min_silhouette=MIN_SILHOUETTE):
+    """True if the clusters are separated well enough for the model to be used."""
+    return silhouette >= min_silhouette
+
+
+def promote_model(best, scaler_path, latest_dir):
+    """
+    Makes the chosen model the official one: copies the model and the scaler into
+    latest_dir and writes metrics.json next to them. Replaces the previous latest model.
+    Args:
+        best (dict): Result of select_best_k.
+        scaler_path (str): Saved scaler from preprocess.
+        latest_dir (str): Folder that always holds the current official model.
+    Returns:
+        dict: {"model_path": <latest_dir>/model.joblib, "scaler_path": <latest_dir>/scaler.joblib,
+               "metrics_path": <latest_dir>/metrics.json}
+    """
+    os.makedirs(latest_dir, exist_ok=True)
+    model_path = os.path.join(latest_dir, "model.joblib")
+    latest_scaler_path = os.path.join(latest_dir, "scaler.joblib")
+    shutil.copy(best["model_path"], model_path)
+    shutil.copy(scaler_path, latest_scaler_path)
+
+    metrics = {key: best[key] for key in ("best_k", "method", "silhouette", "sse")}
+    metrics["source_model"] = best["model_path"]
+    metrics_path = save_json(metrics, os.path.join(latest_dir, "metrics.json"))
+
+    return {"model_path": model_path, "scaler_path": latest_scaler_path, "metrics_path": metrics_path}
+
+
 def predict(model_path, scaler_path, test_csv):
     """
     Assigns each customer in test_csv to a cluster.
@@ -203,3 +245,48 @@ def predict(model_path, scaler_path, test_csv):
 
     clusters = model.predict(scaled)
     return [int(c) for c in clusters]
+
+
+def profile_clusters(model_path, scaler_path, data_csv, out_dir):
+    """
+    Describes each cluster in plain numbers: how many customers it has and their
+    average BALANCE, PURCHASES and CREDIT_LIMIT. Saves it as cluster_profile.csv.
+    Args:
+        model_path (str): The promoted model.
+        scaler_path (str): The promoted scaler.
+        data_csv (str): Clean customer data (unscaled, so the averages are in real money).
+        out_dir (str): This run's folder.
+    Returns:
+        str: Path of <out_dir>/cluster_profile.csv
+    """
+    model = joblib.load(model_path)
+    scaler = joblib.load(scaler_path)
+
+    data = pd.read_csv(data_csv)[FEATURES]
+    data["cluster"] = model.predict(pd.DataFrame(scaler.transform(data), columns=FEATURES))
+
+    profile = data.groupby("cluster")[FEATURES].mean().round(2)
+    profile.insert(0, "customers", data.groupby("cluster").size())
+
+    profile_path = os.path.join(out_dir, "cluster_profile.csv")
+    profile.reset_index().to_csv(profile_path, index=False)
+    return profile_path
+
+
+def write_low_quality_report(best, min_silhouette, out_dir):
+    """
+    Records why a model was NOT promoted, as low_quality.json in this run's folder.
+    Args:
+        best (dict): Result of select_best_k.
+        min_silhouette (float): The quality gate's threshold.
+        out_dir (str): This run's folder.
+    Returns:
+        str: Path of <out_dir>/low_quality.json
+    """
+    report = {
+        "best_k": best["best_k"],
+        "silhouette": best["silhouette"],
+        "min_silhouette": min_silhouette,
+        "reason": f"silhouette {best['silhouette']:.3f} is below the minimum {min_silhouette}",
+    }
+    return save_json(report, os.path.join(out_dir, "low_quality.json"))

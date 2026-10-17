@@ -10,7 +10,7 @@ import re
 from datetime import timedelta
 
 import pendulum
-from airflow.sdk import dag, task, get_current_context
+from airflow.sdk import TriggerRule, dag, task, get_current_context
 from airflow.sdk.exceptions import AirflowFailException
 
 from src import lab
@@ -18,6 +18,8 @@ from src import lab
 # Inside the containers, dags/ is /opt/airflow/dags and working_data/ is /opt/airflow/working_data
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 WORKING_DIR = "/opt/airflow/working_data"
+# Always holds the current official model; only replaced when a new model passes the quality gate
+LATEST_DIR = os.path.join(WORKING_DIR, "latest")
 
 
 def run_folder():
@@ -92,12 +94,58 @@ def customer_segmentation():
         print(f"Best k: {best['best_k']} (by {best['method']}), silhouette {best['silhouette']:.3f}")
         return best
 
+    # A branch task returns the task_id(s) to run next; Airflow skips the other path
+    @task.branch
+    def quality_gate(best):
+        """Decide which path runs next: promote the model, or flag it as too weak."""
+        if lab.passes_quality_gate(best["silhouette"], lab.MIN_SILHOUETTE):
+            print(f"Silhouette {best['silhouette']:.3f} >= {lab.MIN_SILHOUETTE}: promoting the model")
+            return "promote_model"
+        print(f"Silhouette {best['silhouette']:.3f} < {lab.MIN_SILHOUETTE}: flagging the model as low quality")
+        return "flag_low_quality"
+
     @task
-    def predict(model_info, prepared):
-        """Assign the customers in test.csv to clusters."""
-        clusters = lab.predict(model_info["model_path"], prepared["scaler_path"], os.path.join(DATA_DIR, "test.csv"))
+    def promote_model(best, prepared):
+        """Make the chosen model the official latest model."""
+        promoted = lab.promote_model(best, prepared["scaler_path"], LATEST_DIR)
+        print(f"Promoted the k={best['best_k']} model to {LATEST_DIR}")
+        return promoted
+
+    @task
+    def predict(promoted, validated):
+        """Use the promoted model: assign the test customers to clusters and describe every cluster."""
+        clusters = lab.predict(promoted["model_path"], promoted["scaler_path"], os.path.join(DATA_DIR, "test.csv"))
+        profile_path = lab.profile_clusters(
+            promoted["model_path"], promoted["scaler_path"], validated["clean_path"], run_folder()
+        )
         print(f"Clusters: {clusters}")
-        return clusters
+        print(f"Cluster profile saved to {profile_path}")
+        return {"test_clusters": clusters, "profile_path": profile_path}
+
+    @task
+    def flag_low_quality(best):
+        """Record why the model was not promoted. The previous latest model stays in place."""
+        report_path = lab.write_low_quality_report(best, lab.MIN_SILHOUETTE, run_folder())
+        print(f"Model NOT promoted, see {report_path}")
+        return report_path
+
+    # Runs once one path has succeeded and nothing has failed; the skipped path doesn't block it
+    @task(trigger_rule=TriggerRule.NONE_FAILED_MIN_ONE_SUCCESS)
+    def summarize(best):
+        """Write the run summary, whichever path ran."""
+        # xcom_pull reads another task's result; it's None when that task was skipped
+        predictions = get_current_context()["ti"].xcom_pull(task_ids="predict")
+        summary = {
+            "best_k": best["best_k"],
+            "method": best["method"],
+            "silhouette": best["silhouette"],
+            "min_silhouette": lab.MIN_SILHOUETTE,
+            "decision": "promoted" if predictions else "flagged as low quality",
+            "test_clusters": predictions["test_clusters"] if predictions else None,
+        }
+        lab.save_json(summary, os.path.join(run_folder(), "summary.json"))
+        print(f"Run summary: {summary}")
+        return summary
 
     # Passing one task's result into another task creates the arrow between them
     raw = load_data()
@@ -111,7 +159,15 @@ def customer_segmentation():
 
     # Fan in: select_best_k receives the list of all the parallel results
     best = select_best_k(results)
-    predict(best, prepared)
+
+    # Branch: quality_gate picks ONE of the two paths; the other is skipped
+    promoted = promote_model(best, prepared)
+    predicted = predict(promoted, validated)
+    flagged = flag_low_quality(best)
+    quality_gate(best) >> [promoted, flagged]
+
+    # Join: summarize runs after whichever path ran
+    [predicted, flagged] >> summarize(best)
 
 
 customer_segmentation()
