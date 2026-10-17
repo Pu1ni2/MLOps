@@ -72,11 +72,25 @@ def customer_segmentation():
         return preprocessed_data
 
     @task
-    def build_model(prepared):
-        """Pick the best number of clusters and save that model."""
-        model_info = lab.build_model(prepared["data_path"], run_folder())
-        print(f"Best k: {model_info['best_k']}")
-        return model_info
+    def make_k_values():
+        """List the numbers of clusters to try. Each one becomes its own parallel task."""
+        return list(range(lab.K_MIN, lab.K_MAX + 1))
+
+    # map_index_template labels each parallel copy in the UI as k=2, k=3, ... instead of 0, 1, ...
+    @task(map_index_template="{{ k_label }}")
+    def train_kmeans(prepared, k):
+        """Train and score one K-Means model. Airflow runs one copy of this task per k, in parallel."""
+        get_current_context()["k_label"] = f"k={k}"
+        result = lab.train_kmeans(prepared["data_path"], run_folder(), k)
+        print(f"k={k}: SSE {result['sse']:.2f}, silhouette {result['silhouette']:.3f}")
+        return result
+
+    @task
+    def select_best_k(results):
+        """Collect the results of all parallel train_kmeans tasks and pick the best k."""
+        best = lab.select_best_k(list(results), run_folder())
+        print(f"Best k: {best['best_k']} (by {best['method']}), silhouette {best['silhouette']:.3f}")
+        return best
 
     @task
     def predict(model_info, prepared):
@@ -89,8 +103,15 @@ def customer_segmentation():
     raw = load_data()
     validated = validate_data(raw)
     prepared = preprocess(validated)
-    model_info = build_model(prepared)
-    predict(model_info, prepared)
+
+    # Fan out: one train_kmeans task per k.
+    # partial() = arguments shared by every copy; expand() = one copy per value in the list
+    k_values = make_k_values()
+    results = train_kmeans.partial(prepared=prepared).expand(k=k_values)
+
+    # Fan in: select_best_k receives the list of all the parallel results
+    best = select_best_k(results)
+    predict(best, prepared)
 
 
 customer_segmentation()

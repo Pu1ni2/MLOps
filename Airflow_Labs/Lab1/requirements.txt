@@ -1,6 +1,7 @@
 # Already in the Airflow 3.3.2 image, pinned so the versions are documented
 pandas==3.0.5
 scikit-learn==1.9.1
+threadpoolctl==3.6.0
 # Added for this lab
 kneed==0.8.6
 pytest==9.1.1

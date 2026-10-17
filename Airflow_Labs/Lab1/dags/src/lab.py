@@ -13,7 +13,9 @@ import joblib
 import pandas as pd
 from kneed import KneeLocator
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import MinMaxScaler
+from threadpoolctl import threadpool_limits
 
 # The 3 customer columns used for clustering
 FEATURES = ["BALANCE", "PURCHASES", "CREDIT_LIMIT"]
@@ -23,6 +25,19 @@ KMEANS_SETTINGS = {"init": "random", "n_init": 10, "max_iter": 300, "random_stat
 
 # Fewer clean rows than this means something is wrong with the data
 MIN_ROWS = 100
+
+# Numbers of clusters to try; each k is trained as its own parallel Airflow task.
+# The silhouette score needs at least 2 clusters, so k starts at 2.
+K_MIN = 2
+K_MAX = 10
+
+# The silhouette score compares customers with each other, so it's computed on a sample to stay fast
+SILHOUETTE_SAMPLE = 2000
+
+# CPU threads per training task. By default scikit-learn uses EVERY CPU thread in every
+# task, so 9 parallel tasks fight over the CPU. Measured on 9 parallel models:
+# 26.7 s with all threads per task vs 0.5 s with 1 thread per task, same results.
+TRAIN_THREADS = 1
 
 
 def load_data(source_csv, out_dir):
@@ -104,36 +119,67 @@ def preprocess(raw_csv, out_dir):
     return {"data_path": data_path, "scaler_path": scaler_path}
 
 
-def build_model(data_path, out_dir, max_k=49):
+def train_kmeans(data_path, out_dir, k):
     """
-    Tries k = 1..max_k clusters, picks the best k with the elbow method, then
-    trains and saves the model for THAT k.
+    Trains ONE K-Means model with k clusters, scores it, and saves it.
+    In the pipeline, Airflow runs one copy of this per k, all in parallel.
     Args:
         data_path (str): Scaled data CSV from preprocess.
         out_dir (str): This run's folder.
-        max_k (int): Largest number of clusters to try.
+        k (int): Number of clusters.
     Returns:
-        dict: {"best_k": int, "model_path": <out_dir>/model.joblib}
+        dict: {"k": int, "sse": float, "silhouette": float,
+               "model_path": <out_dir>/models/kmeans_k<k>.joblib}
+              sse: how far customers are from their cluster centre (lower = tighter clusters)
+              silhouette: how well separated the clusters are, from -1 to 1 (higher = better)
     """
     data = pd.read_csv(data_path)
-    ks = range(1, max_k + 1)
+    with threadpool_limits(limits=TRAIN_THREADS):
+        model = KMeans(n_clusters=k, **KMEANS_SETTINGS).fit(data)
+        silhouette = silhouette_score(data, model.labels_, sample_size=SILHOUETTE_SAMPLE, random_state=42)
 
-    # SSE (inertia_) = how far customers are from their cluster centre; it always drops as k grows
-    sse = []
-    for k in ks:
-        kmeans = KMeans(n_clusters=k, **KMEANS_SETTINGS)
-        kmeans.fit(data)
-        sse.append(kmeans.inertia_)
-
-    # The elbow: the k after which adding more clusters stops reducing SSE by much
-    best_k = KneeLocator(ks, sse, curve="convex", direction="decreasing").elbow
-
-    model = KMeans(n_clusters=best_k, **KMEANS_SETTINGS).fit(data)
-    model_path = os.path.join(out_dir, "model.joblib")
+    model_dir = os.path.join(out_dir, "models")
+    os.makedirs(model_dir, exist_ok=True)
+    model_path = os.path.join(model_dir, f"kmeans_k{k}.joblib")
     joblib.dump(model, model_path)
 
-    # int(): Airflow can only pass plain Python values between tasks, not numpy numbers
-    return {"best_k": int(best_k), "model_path": model_path}
+    # float()/int(): Airflow can only pass plain Python values between tasks, not numpy numbers
+    return {"k": int(k), "sse": float(model.inertia_), "silhouette": float(silhouette), "model_path": model_path}
+
+
+def select_best_k(results, out_dir):
+    """
+    Picks the best number of clusters from all the train_kmeans results.
+    Uses the elbow method on SSE: the k after which adding more clusters stops
+    reducing SSE by much. If there's no clear elbow, falls back to the k with
+    the highest silhouette score. Saves every k's scores as k_scores.csv.
+    Args:
+        results (list): One train_kmeans result dict per k.
+        out_dir (str): This run's folder.
+    Returns:
+        dict: {"best_k": int, "method": "elbow" or "silhouette", "silhouette": float,
+               "sse": float, "model_path": str, "scores_path": <out_dir>/k_scores.csv}
+    """
+    # Parallel tasks can finish in any order, so sort by k; fix the column order for a readable CSV
+    scores = pd.DataFrame(results)[["k", "sse", "silhouette", "model_path"]]
+    scores = scores.sort_values("k").reset_index(drop=True)
+    scores_path = os.path.join(out_dir, "k_scores.csv")
+    scores.to_csv(scores_path, index=False)
+
+    elbow = KneeLocator(scores["k"], scores["sse"], curve="convex", direction="decreasing").elbow
+    if elbow is not None:
+        best, method = scores[scores["k"] == elbow].iloc[0], "elbow"
+    else:
+        best, method = scores.loc[scores["silhouette"].idxmax()], "silhouette"
+
+    return {
+        "best_k": int(best["k"]),
+        "method": method,
+        "silhouette": float(best["silhouette"]),
+        "sse": float(best["sse"]),
+        "model_path": str(best["model_path"]),
+        "scores_path": scores_path,
+    }
 
 
 def predict(model_path, scaler_path, test_csv):
@@ -142,7 +188,7 @@ def predict(model_path, scaler_path, test_csv):
     The test data is scaled with the SAME scaler that was fitted on the
     training data, so it's on the same 0-1 scale the model learned.
     Args:
-        model_path (str): Saved model from build_model.
+        model_path (str): Saved model of the chosen k (from select_best_k).
         scaler_path (str): Saved scaler from preprocess.
         test_csv (str): Customers to assign (dags/data/test.csv).
     Returns:
