@@ -158,7 +158,7 @@ The test customer has an unusually high credit limit (241,514), so it is assigne
 
    ![Trigger form with the 4 settings](screenshots/03_trigger_form.png)
 
-4. Watch the run in the **Graph** or **Grid** view. A run takes about 15–20 seconds.
+4. Watch the run. The left panel shows the **Grid**; press **g** (or click **Show Graph**) to switch to the **Graph**. A run takes about 15–20 seconds.
 
 **From the command line**
 
@@ -171,9 +171,9 @@ docker compose exec airflow-worker airflow dags test customer_segmentation
 ## What a successful run looks like
 
 - **Graph:** every task is green except `flag_low_quality`, which is skipped (pink), as in the screenshot at the top.
-- **Grid:** the `train_kmeans` row has **9 copies**, labelled `k=2` to `k=10`, which run at the same time:
+- **The 9 parallel copies:** click `train_kmeans` in the run and open its **Task Instances [9]** tab. The copies are labelled `k=2` to `k=10` and all start at the same second:
 
-  ![Grid with the 9 parallel train_kmeans copies](screenshots/02_grid_parallel_tasks.png)
+  ![The 9 parallel train_kmeans copies, labelled k=2 to k=10](screenshots/02_grid_parallel_tasks.png)
 
 - **Task logs** (click a task → Logs):
 
