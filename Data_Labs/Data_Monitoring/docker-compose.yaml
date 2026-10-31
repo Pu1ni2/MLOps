@@ -1,0 +1,39 @@
+# Data Monitoring lab: an Evidently dashboard service plus a container for the monitoring jobs.
+#   docker compose up -d                      -> starts the dashboard at http://localhost:8000
+#   docker compose run --rm monitor <command> -> runs a monitoring job (simulation, tests, ...)
+name: data-monitoring
+
+x-no-telemetry: &no-telemetry
+  DO_NOT_TRACK: "1"
+  EVIDENTLY_DISABLE_TELEMETRY: "1"
+
+services:
+  ui:
+    # Official Evidently service: shows every report saved in ./workspace
+    image: evidently/evidently-service:0.7.23
+    command: ["--workspace", "/app/workspace", "--port", "8000"]
+    ports:
+      # Set EVIDENTLY_PORT in .env (e.g. 8001) if port 8000 is already in use
+      - "${EVIDENTLY_PORT:-8000}:8000"
+    volumes:
+      - ./workspace:/app/workspace
+    environment: *no-telemetry
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/version')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  monitor:
+    # Our image: Python 3.12 + the pinned packages in requirements.txt
+    build: .
+    image: data-monitoring-monitor
+    volumes:
+      - ./:/lab
+    environment:
+      <<: *no-telemetry
+      # Reports are sent to the dashboard service through its API
+      EVIDENTLY_URL: http://ui:8000
+    # Only runs when called with "docker compose run", not with "docker compose up"
+    profiles: ["jobs"]

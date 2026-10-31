@@ -1,0 +1,8 @@
+# Created when the monitoring runs
+workspace/
+reports/
+alerts.jsonl
+models/
+
+# Local settings
+.env
