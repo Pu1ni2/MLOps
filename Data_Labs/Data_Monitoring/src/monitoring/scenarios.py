@@ -48,6 +48,12 @@ def active_events(scenario, day):
     return [event for event in scenario["events"] if event["days"][0] <= day <= event["days"][1]]
 
 
+def date_of(scenario, day):
+    """The calendar date of a simulated day: day 1 is the scenario's start_date."""
+    start = datetime.date.fromisoformat(str(scenario["start_date"]))
+    return start + datetime.timedelta(days=day - 1)
+
+
 def event_strength(event, day):
     """1.0 on every day of the event, or, if it ramps up, a share that grows to 1.0 on its last day."""
     if not event.get("ramp"):
@@ -121,10 +127,9 @@ def simulate_day(scenario, pool, day):
         if event["type"] in ROW_EVENTS:
             ROW_EVENTS[event["type"]](data, labels, event, event_strength(event, day), rng)
 
-    start = datetime.date.fromisoformat(str(scenario["start_date"]))
     return DayBatch(
         day=day,
-        date=start + datetime.timedelta(days=day - 1),
+        date=date_of(scenario, day),
         events=[event["name"] for event in events],
         data=data,
         labels=labels,
