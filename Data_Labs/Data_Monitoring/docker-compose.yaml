@@ -1,6 +1,7 @@
 # Data Monitoring lab: an Evidently dashboard service plus a container for the monitoring jobs.
 #   docker compose up -d                      -> starts the dashboard at http://localhost:8000
-#   docker compose run --rm monitor <command> -> runs a monitoring job (simulation, tests, ...)
+#   docker compose run --rm monitor <command> -> runs a monitoring job (simulation, tests, ...),
+#                                                starting the dashboard first if it isn't running
 name: data-monitoring
 
 x-no-telemetry: &no-telemetry
@@ -31,9 +32,14 @@ services:
     image: data-monitoring-monitor
     volumes:
       - ./:/lab
+    depends_on:
+      ui:
+        condition: service_healthy
     environment:
       <<: *no-telemetry
       # Reports are sent to the dashboard service through its API
       EVIDENTLY_URL: http://ui:8000
+      # The dashboard's address in your browser, printed at the end of a run
+      DASHBOARD_URL: http://localhost:${EVIDENTLY_PORT:-8000}
     # Only runs when called with "docker compose run", not with "docker compose up"
     profiles: ["jobs"]
