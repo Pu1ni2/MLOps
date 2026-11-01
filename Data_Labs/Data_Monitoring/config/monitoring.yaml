@@ -6,6 +6,7 @@ severity:
   data_quality: CRITICAL       # broken input data: the day's predictions can't be trusted
   feature_drift: WARNING       # the people look different from the reference data
   prediction_drift: WARNING    # the model's outputs look different from the reference
+  performance: CRITICAL        # the true labels confirm the model got worse
 
 data_quality:
   # A column may have at most this much more missing values (as a share of rows) than the reference
@@ -28,3 +29,11 @@ prediction_drift:
   # Drift in the model's predicted probability of earning >50K
   method: wasserstein
   threshold: 0.1
+
+performance:
+  # Checked on each day's predictions once their true labels arrive. Each metric listed may fall
+  # at most this far below its value on the reference data (accuracy, precision, recall, f1 or
+  # roc_auc; all five are measured in every report). On 300 simulated days without drift, F1
+  # (baseline 0.71) stayed within 0.08 of its baseline on 99% of days.
+  max_drop:
+    f1: 0.10
