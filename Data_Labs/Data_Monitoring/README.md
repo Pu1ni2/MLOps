@@ -195,7 +195,7 @@ The `[injected: ...]` notes only exist because this is a simulation. They show w
 
 **The dashboard** (open the printed link) shows the project "Census income model: daily monitoring":
 
-- At the top: the month's totals, the latest F1 and drifted-feature counts, and charts of drifted features, prediction drift, data quality and F1 per day (the screenshot at the top of this page).
+- At the top: the month's totals, the latest F1, the average number of drifted features per day, and charts of drifted features, prediction drift, data quality and F1 per day (the screenshot at the top of this page).
 - Further down: the drift score of every feature, the missing and out-of-range values, and all performance metrics:
 
   ![Drift score of every feature, per day](screenshots/02_feature_drift.png)
@@ -204,9 +204,11 @@ The `[injected: ...]` notes only exist because this is a simulation. They show w
 
   ![The project's reports, named after their result](screenshots/03_reports_list.png)
 
-- Opening a report shows its Evidently metrics and tests. The data report of Oct 15, the broken feed:
+- Opening a report shows its Evidently metrics, with its tests in the **Tests** tab. Below are the tests of the Oct 15 data report, the broken feed. The two data-quality tests that made the day CRITICAL are marked red, among tests that passed (green):
 
-  ![The data report of the broken-feed day](screenshots/04_critical_day_report.png)
+  <img src="screenshots/04_critical_day_report.png" alt="Tests of the broken-feed day's data report" width="480">
+
+  Further down the same list, two drift tests fail too: `hours-per-week`'s drift, and the share of drifted features. That makes 4 failures out of 36 tests.
 
 **Files** created in the lab folder (all ignored by git): `models/` (the model, the scored reference data and its metrics), `workspace/` (the dashboard's data) and `alerts.jsonl`.
 
@@ -291,7 +293,7 @@ Compared with the [original lab](https://github.com/raminmohammadi/MLOps/tree/ma
 - **A gate** that turns failed tests into OK / WARNING / CRITICAL, with alerts written to `alerts.jsonl`.
 
 **Dashboard defined in code**
-- **A self-hosted Evidently service in Docker.** The project and its 15 panels are created by code on every run, without duplicates. The original saved a single HTML report.
+- **A self-hosted Evidently service in Docker.** The project and its 16 panels are created by code on every run, without duplicates. The original saved a single HTML report.
 - **Two Evidently 0.7.23 limits worked around:**
   - The open-source service allows only one tab, so text panels mark the sections.
   - `add_panel` lists a panel twice, so the whole dashboard is saved in one call.
