@@ -7,6 +7,7 @@ trains it, measures its baseline performance on the reference data, and saves bo
 import json
 
 import joblib
+import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.impute import SimpleImputer
@@ -81,6 +82,13 @@ def main():
     print(f"Split: {len(train)} train, {len(reference)} reference, {len(pool)} production pool")
     print(f"Baseline performance on the reference data: {metrics}")
     return model, reference, metrics
+
+
+def load_or_train():
+    """The saved model and scored reference data, trained and saved first if they don't exist yet."""
+    if not (MODEL_PATH.exists() and REFERENCE_PATH.exists()):
+        main()
+    return joblib.load(MODEL_PATH), pd.read_csv(REFERENCE_PATH)
 
 
 if __name__ == "__main__":
