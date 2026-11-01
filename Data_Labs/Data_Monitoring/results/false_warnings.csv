@@ -1,0 +1,3 @@
+setup,feature_drift_%,prediction_drift_%,any_drift_warning_%
+Evidently defaults,88.5,2.2,88.6
+calibrated,3.3,0.1,3.4
