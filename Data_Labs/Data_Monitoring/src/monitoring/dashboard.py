@@ -43,7 +43,8 @@ def dashboard_model(summary):
     panels = [
         text_panel("Census income model: a simulated month of production", description=summary),
         counter_panel("F1 on the latest day with true labels", [f1], size="half"),
-        counter_panel("Drifted features on the latest day", [drifted_features], size="half"),
+        # An average rather than the latest day: the dashboard shows a counter of 0 as "no value"
+        counter_panel("Drifted features per day, month average", [drifted_features], size="half", aggregation="avg"),
         bar_plot_panel("Drifted features per day", [drifted_features], size="half"),
         line_plot_panel("Prediction drift: score per day", [
             series("ValueDrift", "predicted probability", DATA_TAG, column=PROBABILITY),
@@ -58,10 +59,16 @@ def dashboard_model(summary):
         text_panel("Feature drift", description="How far each feature's distribution is from the reference "
                                                 "data: a higher score means more drift. Each feature has its "
                                                 "own threshold, calibrated in results/thresholds.csv."),
+        # hours-per-week gets its own chart: its broken-feed score (above 50) would flatten every other line
         line_plot_panel("Numeric features: drift score per day",
-                        [series("ValueDrift", column, DATA_TAG, column=column) for column in NUMERICAL], size="half"),
+                        [series("ValueDrift", column, DATA_TAG, column=column)
+                         for column in NUMERICAL if column != "hours-per-week"], size="half"),
         line_plot_panel("Categorical features: drift score per day",
                         [series("ValueDrift", column, DATA_TAG, column=column) for column in CATEGORICAL], size="half"),
+        line_plot_panel("hours-per-week: drift score per day", [
+            series("ValueDrift", "hours-per-week", DATA_TAG, column="hours-per-week"),
+        ], description="The spike on Oct 15 is the broken feed sending hours in minutes. It dwarfs the real, "
+                       "gradual drift of Oct 8-14 (scores 0.13 to 0.74)."),
 
         text_panel("Data quality", description="Missing values, and numbers outside the range seen in the "
                                                "reference data."),
