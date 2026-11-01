@@ -2,6 +2,8 @@ evidently==0.7.23
 # Evidently 0.7.23 imports a pandas internal that pandas 3.1 removed; 3.0.5 is what
 # Evidently's own Docker image uses
 pandas==3.0.5
+# The simulated days come from numpy's random generator, which can change between versions
+numpy==2.5.4
 scikit-learn==1.9.1
 pyyaml==6.0.3
 matplotlib==3.11.2
