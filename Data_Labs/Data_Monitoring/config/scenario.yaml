@@ -1,0 +1,51 @@
+# Simulated production: each day, a batch of people arrives and the model scores them.
+# The drift events below change those batches on their days, so the monitoring has
+# something real to catch. The same seed always produces exactly the same days.
+
+seed: 42
+days: 30
+batch_size: 500            # people per day
+start_date: 2026-10-01     # the date of day 1; reports on the dashboard are dated from it
+label_delay_days: 3        # the true incomes of day d's people only become known on day d + 3
+
+# Each event is active from the first to the last of its "days" (both included).
+# With "ramp: true", it starts weak and grows each day, reaching full strength on its last day.
+events:
+  # Days 8-14: older people who work longer hours become more likely to show up.
+  # "tilt" favours people with high values in a column (a negative tilt favours low values);
+  # at full strength, 0.6 raises the average age from 39 to 47 and the hours from 40 to 51.
+  - name: older_longer_hours
+    type: numeric_shift
+    days: [8, 14]
+    ramp: true
+    tilt:
+      age: 0.6
+      hours-per-week: 0.6
+
+  # Day 15: a broken upstream system sends hours-per-week in minutes instead of hours
+  # for 30% of rows, and loses the occupation of 40% of rows.
+  - name: broken_upstream_feed
+    type: data_quality
+    days: [15, 15]
+    multiply:
+      hours-per-week: {factor: 60, share: 0.3}
+    missing:
+      occupation: 0.4        # share of rows whose value is lost
+
+  # Days 16-22: self-employed people become 4 times as likely to show up.
+  - name: more_self_employed
+    type: category_shift
+    days: [16, 22]
+    weights:
+      workclass:
+        Self-emp-not-inc: 4.0
+        Self-emp-inc: 4.0
+
+  # Days 23-30: concept drift. The people look the same as before, but half of those with
+  # a bachelor's degree or higher (education-num 13+) who earned >50K now earn <=50K.
+  # Only the true labels, which arrive 3 days late, can reveal it.
+  - name: degree_premium_drops
+    type: concept_drift
+    days: [23, 30]
+    segment: {column: education-num, min: 13}
+    flip: {from: ">50K", to: "<=50K", share: 0.5}
