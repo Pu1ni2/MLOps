@@ -17,9 +17,19 @@ LOCAL_WORKSPACE_DIR = LAB_DIR / "workspace"
 def open_workspace(url=None, path=LOCAL_WORKSPACE_DIR):
     """Connects to the dashboard service if a URL is given or set in EVIDENTLY_URL, else opens a local folder."""
     url = url or os.environ.get("EVIDENTLY_URL")
-    if url:
+    if not url:
+        return Workspace(str(path))
+    try:
         return RemoteWorkspace(url)
-    return Workspace(str(path))
+    except OSError as error:  # what the connection errors of requests (used by Evidently) are
+        raise RuntimeError(f"Can't reach the Evidently dashboard service at {url}. "
+                           "Start it with: docker compose up -d") from error
+
+
+def project_url(project):
+    """The project's page in the browser, if the dashboard's address is set in DASHBOARD_URL."""
+    base = os.environ.get("DASHBOARD_URL")
+    return f"{base}/projects/{project.id}" if base else None
 
 
 def get_or_create_project(workspace, name, description=""):
