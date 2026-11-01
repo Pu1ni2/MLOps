@@ -1,0 +1,30 @@
+# How the daily monitoring judges each day. Each rule below becomes an Evidently test in the
+# day's report, and the gate gives the day the status of its most serious failed check.
+
+# The status of a day when one of its checks fails (a day with no failed checks is OK)
+severity:
+  data_quality: CRITICAL       # broken input data: the day's predictions can't be trusted
+  feature_drift: WARNING       # the people look different from the reference data
+  prediction_drift: WARNING    # the model's outputs look different from the reference
+
+data_quality:
+  # A column may have at most this much more missing values (as a share of rows) than the reference
+  max_missing_increase: 0.10
+  # Share of a numeric column's values allowed outside the range seen in the reference
+  max_out_of_range: 0.01
+
+feature_drift:
+  # Evidently's defaults for a reference of this size: Wasserstein distance (normed) for numeric
+  # columns and Jensen-Shannon distance for categories. A score at or above the threshold is drift.
+  num_method: wasserstein
+  num_threshold: 0.1
+  cat_method: jensenshannon
+  cat_threshold: 0.1
+  per_column_threshold: {}     # thresholds for single columns, replacing the ones above
+  # The check fails when at least this many of the 14 features drift
+  min_drifted_features: 1
+
+prediction_drift:
+  # Drift in the model's predicted probability of earning >50K
+  method: wasserstein
+  threshold: 0.1
