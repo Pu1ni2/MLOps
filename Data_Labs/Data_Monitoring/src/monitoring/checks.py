@@ -78,8 +78,9 @@ def data_report(reference, config):
                                           share_tests=[lte(quality["max_out_of_range"])]))
     metrics.append(DataDriftPreset(
         columns=FEATURES,
-        num_method=drift["num_method"], num_threshold=drift["num_threshold"],
-        cat_method=drift["cat_method"], cat_threshold=drift["cat_threshold"],
+        # A test's own default threshold applies to any column without a threshold of its own
+        num_method=drift["num_method"], num_threshold=drift.get("num_threshold"),
+        cat_method=drift["cat_method"], cat_threshold=drift.get("cat_threshold"),
         per_column_threshold=drift["per_column_threshold"],
         # The report's "share of drifted columns" test then fails exactly when the gate's rule does
         drift_share=drift["min_drifted_features"] / len(FEATURES),
@@ -127,9 +128,9 @@ def failed_checks(snapshot):
             failures.append(("data_quality", f"{column} {value['share']:.1%} outside "
                                              f"{params['left']} to {params['right']} (limit {limit:.1%})"))
         elif metric == "ValueDrift" and column == PROBABILITY:
-            failures.append(("prediction_drift", f"score {value:.2f} (threshold {params['threshold']})"))
+            failures.append(("prediction_drift", f"score {value:.3g} (threshold {params['threshold']:.3g})"))
         elif metric == "ValueDrift":
-            drifted.append(f"{column} {value:.2f}")
+            drifted.append(f"{column} {value:.3g}")
         elif metric == "DriftedColumnsCount":
             enough_drifted = True
         elif metric in performance_names:
