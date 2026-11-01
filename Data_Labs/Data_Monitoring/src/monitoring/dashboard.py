@@ -56,7 +56,8 @@ def dashboard_model(summary):
         line_plot_panel("F1 per day of predictions", [f1], size="half"),
 
         text_panel("Feature drift", description="How far each feature's distribution is from the reference "
-                                                "data. A higher score means more drift."),
+                                                "data: a higher score means more drift. Each feature has its "
+                                                "own threshold, calibrated in results/thresholds.csv."),
         line_plot_panel("Numeric features: drift score per day",
                         [series("ValueDrift", column, DATA_TAG, column=column) for column in NUMERICAL], size="half"),
         line_plot_panel("Categorical features: drift score per day",
