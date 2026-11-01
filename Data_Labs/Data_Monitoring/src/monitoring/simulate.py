@@ -16,7 +16,7 @@ from monitoring import checks, dashboard, gate
 from monitoring.data import LAB_DIR, TARGET, load_adult, split_data
 from monitoring.model import add_predictions, load_or_train
 from monitoring.scenarios import date_of, load_scenario, simulate_day
-from monitoring.workspace import LOCAL_WORKSPACE_DIR, open_workspace, project_url
+from monitoring.workspace import open_workspace, project_url
 
 ALERTS_PATH = LAB_DIR / "alerts.jsonl"
 
@@ -37,8 +37,13 @@ def publish(workspace, project, snapshot, name, severity):
     return failures
 
 
-def main():
-    scenario, config = load_scenario(), checks.load_config()
+def main(scenario=None, workspace=None, alerts_path=ALERTS_PATH):
+    """
+    Runs the simulation. By default it uses config/scenario.yaml, sends the reports to the
+    dashboard service (see workspace.open_workspace), and writes the alerts to alerts.jsonl.
+    """
+    scenario = load_scenario() if scenario is None else scenario
+    config = checks.load_config()
     model, reference = load_or_train()
     _, _, pool = split_data(load_adult())
     data_report, reference_data = checks.data_report(reference, config), checks.to_dataset(reference)
@@ -46,11 +51,11 @@ def main():
     labeled_reference = checks.to_labeled_dataset(reference)
     severity = config["severity"]
 
-    workspace = open_workspace()
+    workspace = open_workspace() if workspace is None else workspace
     project = dashboard.recreate_project(workspace)
     dashboard.save_dashboard(workspace, project, "The simulated month is running...")
 
-    ALERTS_PATH.unlink(missing_ok=True)  # each run writes a fresh alerts file
+    alerts_path.unlink(missing_ok=True)  # each run writes a fresh alerts file
     statuses = Counter()
     waiting = {}  # day -> (batch, its predictions), until the day's true labels arrive
     for day in range(1, scenario["days"] + scenario["label_delay_days"] + 1):
@@ -82,7 +87,7 @@ def main():
         statuses[status] += 1
         date = date_of(scenario, day)
         if status != "OK":
-            gate.write_alert(ALERTS_PATH, gate.make_alert(day, date, status, failures))
+            gate.write_alert(alerts_path, gate.make_alert(day, date, status, failures))
         print(f"day {day:>2}  {date}  {status:<8}  {note}".rstrip())
         for check, message in failures:
             print(f"      {check}: {message}")
@@ -92,9 +97,9 @@ def main():
         f"{counts}. Every day, {scenario['batch_size']} people are scored and their data is checked; "
         f"each day's predictions are scored once their true labels arrive, {scenario['label_delay_days']} days later."
     ))
-    print(f"\n{counts}. Alerts written to {ALERTS_PATH.name}")
-    url = project_url(project)
-    print(f"Dashboard: {url}" if url else f"Reports saved to {LOCAL_WORKSPACE_DIR}")
+    print(f"\n{counts}. Alerts written to {alerts_path.name}")
+    url = project_url(workspace, project)
+    print(f"Dashboard: {url}" if url else "Reports saved in the local Evidently workspace")
 
 
 if __name__ == "__main__":

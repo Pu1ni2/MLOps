@@ -26,10 +26,12 @@ def open_workspace(url=None, path=LOCAL_WORKSPACE_DIR):
                            "Start it with: docker compose up -d") from error
 
 
-def project_url(project):
-    """The project's page in the browser, if the dashboard's address is set in DASHBOARD_URL."""
+def project_url(workspace, project):
+    """The project's page in the browser, if the workspace is the dashboard service and DASHBOARD_URL gives its address."""
     base = os.environ.get("DASHBOARD_URL")
-    return f"{base}/projects/{project.id}" if base else None
+    if base and isinstance(workspace, RemoteWorkspace):
+        return f"{base}/projects/{project.id}"
+    return None
 
 
 def get_or_create_project(workspace, name, description=""):
