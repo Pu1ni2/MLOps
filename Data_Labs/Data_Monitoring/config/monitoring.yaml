@@ -15,25 +15,41 @@ data_quality:
   max_out_of_range: 0.01
 
 feature_drift:
-  # Evidently's defaults for a reference of this size: Wasserstein distance (normed) for numeric
-  # columns and Jensen-Shannon distance for categories. A score at or above the threshold is drift.
+  # Chosen by the calibration study (python -m monitoring.calibrate; the numbers are in results/).
+  # At the same rate of false alarms, Wasserstein distance (normed) caught the most numeric drift
+  # and Jensen-Shannon distance the most category drift: the tests Evidently uses by default.
+  # Its single default threshold of 0.1 was the problem: on drift-free days it flagged
+  # native-country 82% of the time, while sex or race had to drift a lot to reach it.
+  # Each threshold below is crossed on only 1 drift-free day in 500. A score at or above it is drift.
   num_method: wasserstein
-  num_threshold: 0.1
   cat_method: jensenshannon
-  cat_threshold: 0.1
-  per_column_threshold: {}     # thresholds for single columns, replacing the ones above
+  per_column_threshold:
+    age: 0.1534
+    fnlwgt: 0.1632
+    education-num: 0.1476
+    capital-gain: 0.1565
+    capital-loss: 0.1371
+    hours-per-week: 0.1503
+    workclass: 0.07867
+    education: 0.1055
+    marital-status: 0.07655
+    occupation: 0.09479
+    relationship: 0.07686
+    race: 0.0654
+    sex: 0.04621
+    native-country: 0.1352
   # The check fails when at least this many of the 14 features drift
   min_drifted_features: 1
 
 prediction_drift:
-  # Drift in the model's predicted probability of earning >50K
+  # Drift in the model's predicted probability of earning >50K, with a threshold calibrated the same way
   method: wasserstein
-  threshold: 0.1
+  threshold: 0.146
 
 performance:
   # Checked on each day's predictions once their true labels arrive. Each metric listed may fall
   # at most this far below its value on the reference data (accuracy, precision, recall, f1 or
-  # roc_auc; all five are measured in every report). On 300 simulated days without drift, F1
-  # (baseline 0.71) stayed within 0.08 of its baseline on 99% of days.
+  # roc_auc; all five are measured in every report). On 2,000 simulated drift-free days, F1
+  # (baseline 0.71) fell below this limit on 0.55% of days (results/performance_noise.csv).
   max_drop:
     f1: 0.10
