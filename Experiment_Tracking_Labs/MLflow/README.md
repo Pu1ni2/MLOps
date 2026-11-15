@@ -207,10 +207,15 @@ The server answered for all 1,064 test wines, exactly as the champion (version 1
 
 **In the MLflow UI** (http://localhost:5050):
 
-- **Experiment `wine-quality`, Runs tab** (http://localhost:5050/#/experiments/1/runs): every run of the pipeline (the screenshot at the top). MLflow 3 opens an experiment on its GenAI pages (traces), which stay empty in this lab, so use the **Runs** tab.
-- **The tuning run:** 40 attempts nested under `tune-xgboost`, each with its settings and validation AUC. Expand `tune-xgboost` in the runs table to see them:
+- **Experiment `wine-quality`, Runs tab** (http://localhost:5050/#/experiments/1/runs): every run of the pipeline (the screenshot at the top).
+  - Each run lists the datasets it used, with their fingerprints, such as `wines-train (bc3b5a7d)`.
+  - Each run also lists the model versions registered from it: `wine_quality v1` comes from the random forest, and `v2` from the tuning.
+  - MLflow 3 opens an experiment on its GenAI pages (traces), which stay empty in this lab, so use the **Runs** tab.
+- **The tuning run:** 40 attempts nested under `tune-xgboost`, each with its settings and validation AUC. Expand `tune-xgboost` in the runs table to see them.
+  - Sorted by validation AUC, attempt 22 comes first.
+  - `tune-xgboost`, the winner retrained, scores exactly the same:
 
-  ![The 40 nested tuning runs](screenshots/02_tuning_runs.png)
+  ![The tuning attempts sorted by validation AUC](screenshots/02_tuning_runs.png)
 
 - **Models → `wine_quality`:** version 1 is `@champion` and version 2 is `@challenger`:
 
