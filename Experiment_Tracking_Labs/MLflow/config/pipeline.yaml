@@ -29,3 +29,15 @@ tuning:
   # early_stopping_rounds trees in a row
   max_trees: 1000
   early_stopping_rounds: 50
+
+# The model registry. Each version of the model can carry aliases: @champion is the version in use,
+# @challenger the latest candidate, and @previous the champion before, kept for a rollback.
+registry:
+  model_name: wine_quality
+  # A challenger replaces the champion only if it is better on the test wines, and not by luck. The test
+  # wines are drawn again at random `resamples` times (some twice, some not at all), and the challenger's
+  # AUC must beat the champion's in at least min_win_share of them...
+  resamples: 1000
+  min_win_share: 0.9
+  # ...and its Brier score (how realistic its chances are) may be at most this much worse
+  max_brier_increase: 0.0

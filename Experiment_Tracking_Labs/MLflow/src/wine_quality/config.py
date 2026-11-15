@@ -23,4 +23,11 @@ def load_config(path=CONFIG_PATH):
     for key, value in config["tuning"].items():
         if not isinstance(value, int) or value < 1:
             raise ValueError(f"tuning.{key} must be a whole number of at least 1, not {value!r}")
+    registry = config["registry"]
+    if not isinstance(registry["resamples"], int) or registry["resamples"] < 100:
+        raise ValueError(f"registry.resamples must be a whole number of at least 100, not {registry['resamples']!r}")
+    if not 0.5 <= registry["min_win_share"] <= 1:
+        raise ValueError(f"registry.min_win_share must be between 0.5 and 1, not {registry['min_win_share']!r}")
+    if registry["max_brier_increase"] < 0:
+        raise ValueError(f"registry.max_brier_increase can't be negative: {registry['max_brier_increase']!r}")
     return config
