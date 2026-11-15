@@ -1,0 +1,11 @@
+mlflow==3.18.0
+# The CPU-only build of XGBoost: the regular package also installs NVIDIA's GPU libraries
+xgboost-cpu==3.4.1
+optuna==5.0.0
+scikit-learn==1.9.1
+pandas==3.1.1
+# The data split, the tuning and the models all use numpy's random generator, which can change between versions
+numpy==2.5.4
+pyyaml==6.0.3
+matplotlib==3.11.2
+pytest==9.2.0

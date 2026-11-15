@@ -1,0 +1,96 @@
+# MLflow lab: an MLflow tracking server with its database, plus containers for the lab's jobs and for serving.
+#   docker compose up -d                        -> starts the tracking server and its UI at http://localhost:5050
+#   docker compose run --rm trainer <command>   -> runs a job (the pipeline, tests, ...), starting the server first if needed
+#   docker compose --profile serve up -d serve  -> serves the champion model at http://localhost:5001
+name: mlflow-lab
+
+x-no-telemetry: &no-telemetry
+  MLFLOW_DISABLE_TELEMETRY: "true"
+  DO_NOT_TRACK: "true"
+
+services:
+  postgres:
+    # Where MLflow keeps experiments, runs, parameters, metrics and the model registry
+    image: postgres:18.7-alpine
+    environment:
+      POSTGRES_USER: mlflow
+      # Only reachable inside Docker: the database port isn't published on your computer
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mlflow -d mlflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  mlflow:
+    # The tracking server and UI. It also stores the runs' files (artifacts), which jobs upload through it.
+    build: server
+    image: mlflow-lab-server
+    command:
+      - mlflow
+      - server
+      - --host=0.0.0.0
+      - --port=5000
+      - --backend-store-uri=postgresql://mlflow:mlflow@postgres:5432/mlflow
+      - --artifacts-destination=/mlartifacts
+      # Requests may come from the lab's containers (mlflow:5000) and from your browser (localhost)
+      - --allowed-hosts=mlflow:5000,localhost:*,127.0.0.1:*
+    ports:
+      # Only on this computer (127.0.0.1): the server has no login, so it shouldn't be reachable from the network.
+      # 5050 because 5000, MLflow's usual port, is often taken (Flask apps, macOS AirPlay).
+      # Set MLFLOW_PORT in .env if 5050 is in use too.
+      - "127.0.0.1:${MLFLOW_PORT:-5050}:5000"
+    volumes:
+      - mlflow-artifacts:/mlartifacts
+    environment: *no-telemetry
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  trainer:
+    # Our image: Python 3.12 + the pinned packages in requirements.txt
+    build: .
+    image: mlflow-lab-trainer
+    volumes:
+      - ./:/lab
+    environment:
+      <<: *no-telemetry
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      # The UI's address in your browser, for the links the jobs print
+      MLFLOW_UI_URL: http://localhost:${MLFLOW_PORT:-5050}
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    # Only runs when called with "docker compose run", not with "docker compose up"
+    profiles: ["jobs"]
+
+  serve:
+    # Serves the registry's champion model as a REST API (same image as the trainer)
+    build: .
+    image: mlflow-lab-trainer
+    command: ["mlflow", "models", "serve", "--model-uri", "models:/wine_quality@champion",
+              "--env-manager", "local", "--host", "0.0.0.0", "--port", "5001"]
+    ports:
+      # Only on this computer; set SERVE_PORT in .env if port 5001 is already in use
+      - "127.0.0.1:${SERVE_PORT:-5001}:5001"
+    environment:
+      <<: *no-telemetry
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    profiles: ["serve"]
+
+volumes:
+  mlflow-db:
+  mlflow-artifacts:
