@@ -1,4 +1,3 @@
 version,aliases,model_family,validation_auc,test_auc,test_brier,decision,reason
 1,@champion,random_forest,0.8611,0.8488,0.1117,promoted,first model: there was no champion yet
-2,,xgboost,0.8678,0.8489,0.1126,rejected,"its test AUC (0.849, champion 0.849) was higher in only 52% of the re-drawn test sets, below the 90% required"
-3,@challenger,xgboost,0.8678,0.8489,0.1126,rejected,"its test AUC (0.849, champion 0.849) was higher in only 52% of the re-drawn test sets, below the 90% required"
+2,@challenger,xgboost,0.8678,0.8489,0.1126,rejected,"its test AUC (0.849, champion 0.849) was higher in only 52% of the re-drawn test sets, below the 90% required"
