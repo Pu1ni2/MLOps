@@ -30,12 +30,14 @@ def new_chart(title, subtitle, size=(6.4, 4.8), left=0.12):
     subtitle wraps to the plot's width; left is the room kept for the y-axis labels (share of the width).
     """
     figure, axes = plt.subplots(figsize=size)
-    figure.subplots_adjust(left=left, right=0.96, top=0.80, bottom=0.13)
     characters_per_line = int(size[0] * (0.96 - left) * 72 / 5.2)  # about 5.2 points per character at 9 points
     subtitle = textwrap.fill(subtitle, characters_per_line)
+    lines = subtitle.count("\n") + 1
+    # Room above the plot for the title and every line of the subtitle, in points
+    room = 16 + 13 * lines + 26
+    figure.subplots_adjust(left=left, right=0.96, top=1 - room / (size[1] * 72), bottom=0.13)
     axes.annotate(subtitle, xy=(0, 1), xycoords="axes fraction", xytext=(0, 10), textcoords="offset points",
                   fontsize=9, color=SECONDARY, va="bottom", linespacing=1.4)
-    lines = subtitle.count("\n") + 1
     axes.annotate(title, xy=(0, 1), xycoords="axes fraction", xytext=(0, 16 + 13 * lines), textcoords="offset points",
                   fontsize=12, fontweight="bold", color=INK, va="bottom")
     return figure, axes
@@ -99,6 +101,36 @@ def tuning_chart(scores, reference=None):
     axes.step(attempts, np.maximum.accumulate(scores), where="post", color=BLUE, linewidth=2, zorder=3)
     axes.set(xlabel="Attempt", ylabel="Validation AUC", xlim=(0.5, len(scores) + 0.5))
     axes.grid(True, axis="y")
+    return figure
+
+
+def leakage_chart(rows):
+    """
+    One row per setup, with a dot for its AUC on each group of test wines: all of them, the ones it had
+    already seen in training, and the new ones. rows: setup, auc_all, auc_seen, auc_new (seen may be missing).
+    """
+    groups = [("auc_all", "all test wines", BLUE), ("auc_seen", "already seen in training", "#eb6834"),
+              ("auc_new", "new wines only", "#1baf7a")]
+    # Without any seen wines, "all" and "new" are the same wines: show only the new ones
+    rows = [row if row.get("auc_seen") is not None else {**row, "auc_all": None} for row in rows]
+    figure, axes = new_chart("Duplicates inflated the original lab's score",
+                             "Test AUC on all test wines, on the copies of training wines among them, and on the "
+                             "new wines", size=(8.0, 4.6), left=0.40)
+    positions = np.arange(len(rows))[::-1]
+    for position, row in zip(positions, rows):
+        values = [row[key] for key, _, _ in groups if row.get(key) is not None]
+        axes.plot([min(values), max(values)], [position, position], color=GRID, linewidth=2, zorder=1)
+    for key, label, color in groups:
+        points = [(row[key], position) for row, position in zip(rows, positions) if row.get(key) is not None]
+        axes.scatter(*zip(*points), s=60, color=color, edgecolors=SURFACE, linewidths=1.5, zorder=3, label=label)
+        for value, position in points:
+            axes.annotate(f"{value:.3f}", (value, position), xytext=(0, 9), textcoords="offset points",
+                          ha="center", fontsize=8.5, color=SECONDARY)
+    axes.set_yticks(positions, [row["setup"] for row in rows], color=SECONDARY, fontsize=9)
+    axes.set(xlabel="Test AUC", ylim=(-0.6, len(rows) - 0.3))
+    axes.grid(True, axis="x")
+    axes.spines["left"].set_visible(False)
+    axes.legend(loc="lower right", frameon=False, fontsize=8.5, labelcolor=SECONDARY)
     return figure
 
 
