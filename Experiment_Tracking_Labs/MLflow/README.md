@@ -207,8 +207,8 @@ The server answered for all 1,064 test wines, exactly as the champion (version 1
 
 **In the MLflow UI** (http://localhost:5050):
 
-- **Experiment `wine-quality`:** every run of the pipeline (the screenshot at the top).
-- **The tuning run:** 40 attempts nested under `tune-xgboost`, each with its settings and validation AUC:
+- **Experiment `wine-quality`, Runs tab** (http://localhost:5050/#/experiments/1/runs): every run of the pipeline (the screenshot at the top). MLflow 3 opens an experiment on its GenAI pages (traces), which stay empty in this lab, so use the **Runs** tab.
+- **The tuning run:** 40 attempts nested under `tune-xgboost`, each with its settings and validation AUC. Expand `tune-xgboost` in the runs table to see them:
 
   ![The 40 nested tuning runs](screenshots/02_tuning_runs.png)
 
