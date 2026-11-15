@@ -70,6 +70,8 @@ services:
       # http://mlflow:5000, an address that only works inside Docker, so they are switched off.
       MLFLOW_UI_URL: http://localhost:${MLFLOW_PORT:-5050}
       MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
+      # No progress bars each time a model is downloaded from the server
+      MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
     depends_on:
       mlflow:
         condition: service_healthy
@@ -88,6 +90,7 @@ services:
     environment:
       <<: *no-telemetry
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
     depends_on:
       mlflow:
         condition: service_healthy
