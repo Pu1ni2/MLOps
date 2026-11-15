@@ -3,6 +3,9 @@
 # The MLflow experiment that every run is logged to
 experiment: wine-quality
 
+# One seed for the split, the models and the tuning, so every run can be repeated exactly
+seed: 42
+
 data:
   # A wine counts as "high quality" if its quality score (0-10, given by wine experts) is at least this
   high_quality_from: 7
@@ -11,4 +14,10 @@ data:
   remove_duplicates: true
   # Shares of the wines used to train the models, to choose between them, and to judge the chosen one
   split: {train: 0.6, validation: 0.2, test: 0.2}
-  seed: 42
+
+# The simple models a tuned model has to beat. Their settings are passed to scikit-learn unchanged.
+baselines:
+  # Scaled measurements, then a logistic regression
+  logistic_regression: {C: 1.0, max_iter: 1000}
+  # The original lab's baseline model, with 300 trees instead of 10 for steadier probabilities
+  random_forest: {n_estimators: 300, min_samples_leaf: 2}

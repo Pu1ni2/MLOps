@@ -16,4 +16,8 @@ def load_config(path=CONFIG_PATH):
             or abs(sum(shares.values()) - 1) > 1e-9):
         raise ValueError(f"data.split needs train, validation and test shares between 0 and 1 "
                          f"that add up to 1, not {shares}")
+    from wine_quality.models import TRUSTED_TYPES  # imported here: the models module loads the ML libraries
+    for family in config["baselines"]:
+        if family not in TRUSTED_TYPES:
+            raise ValueError(f"Unknown model family {family!r} in baselines: use one of {list(TRUSTED_TYPES)}")
     return config

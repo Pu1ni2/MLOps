@@ -66,10 +66,10 @@ def prepare(config):
     wines = add_label(load_wines(), settings["high_quality_from"])
     total, duplicates = len(wines), int(wines.duplicated().sum())
     # The split with the duplicates kept, as the original lab did, to measure how many test wines it shares
-    with_duplicates = split(wines, settings["split"], settings["seed"])
+    with_duplicates = split(wines, settings["split"], config["seed"])
     if settings["remove_duplicates"]:
         wines = wines.drop_duplicates(ignore_index=True)
-    splits = split(wines, settings["split"], settings["seed"])
+    splits = split(wines, settings["split"], config["seed"])
     summary = {
         "wines": total,
         "duplicate_wines": duplicates,
@@ -86,8 +86,8 @@ def prepare(config):
 
 def log_datasets(splits):
     """
-    Records the splits as the current run's input datasets. MLflow keeps a fingerprint (digest) of each,
-    so every run shows exactly which data it used.
+    Records the given splits (e.g. train and validation) as the current run's input datasets. MLflow keeps
+    a fingerprint (digest) of each, so every run shows exactly which data it used.
     """
     for part, table in splits.items():
         mlflow.log_input(mlflow.data.from_pandas(table, name=f"wines-{part}", targets=TARGET), context=part)
@@ -101,7 +101,7 @@ def main():
         mlflow.set_tag("stage", "data")
         settings = {key: value for key, value in config["data"].items() if key != "split"}
         settings.update({f"split.{part}": share for part, share in config["data"]["split"].items()})
-        mlflow.log_params({f"data.{key}": value for key, value in settings.items()})
+        mlflow.log_params({"seed": config["seed"], **{f"data.{key}": value for key, value in settings.items()}})
         mlflow.log_metrics(summary)
         log_datasets(splits)
 
