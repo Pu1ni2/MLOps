@@ -23,8 +23,9 @@ def print_outcome(outcome, label):
     print(f"    because {outcome['reason']}")
 
 
-def main():
-    config = load_config()
+def main(config=None):
+    """Runs the pipeline with config/pipeline.yaml, or with the given settings (the tests use smaller ones)."""
+    config = load_config() if config is None else config
     splits, summary = data.prepare(config)
     use_experiment(config["experiment"])
     print("1. Data")
