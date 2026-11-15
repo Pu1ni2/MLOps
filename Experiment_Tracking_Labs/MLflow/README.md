@@ -153,7 +153,7 @@ The lab's Python packages are pinned in [requirements.txt](requirements.txt). `x
    You can also call it yourself with the example request in [examples/request.json](examples/request.json) (2 wines). The same command works in PowerShell, Git Bash, macOS and Linux:
 
    ```
-   curl.exe -X POST http://localhost:5001/invocations -H "Content-Type: application/json" --data "@examples/request.json"
+   curl.exe -s -X POST http://localhost:5001/invocations -H "Content-Type: application/json" --data "@examples/request.json"
    ```
 
    (On macOS and Linux, type `curl` instead of `curl.exe`.) The answer has two numbers per wine: its chance of being ordinary and its chance of being high quality.
@@ -228,7 +228,7 @@ The server answered for all 1,064 test wines, exactly as the champion (version 1
 docker compose run --rm trainer pytest
 ```
 
-Expected result: `28 passed`, in about 2 minutes. The tests use a temporary MLflow store (a SQLite file in a temporary folder), so they never touch the MLflow server, its registry or the lab's files.
+Expected result: `28 passed`, in 1 to 2 minutes. The tests use a temporary MLflow store (a SQLite file in a temporary folder), so they never touch the MLflow server, its registry or the lab's files.
 
 | File | What it checks |
 |------|----------------|
@@ -251,8 +251,8 @@ The `outputs` folder stays until you delete it.
 
 | Problem | Fix |
 |---------|-----|
-| Port 5050 or 5001 is already in use | Create a `.env` file containing `MLFLOW_PORT=5055` (or `SERVE_PORT=5002`), then run `docker compose up -d` again. PowerShell: `Set-Content -Path .env -Encoding ascii -Value "MLFLOW_PORT=5055"` |
-| `docker compose build` says "No services to build" for the jobs | Name the services, as in the setup: `docker compose build mlflow trainer` |
+| `ports are not available` (port 5050 or 5001 is already in use) | Create a `.env` file containing `MLFLOW_PORT=5060` (or `SERVE_PORT=5002`), then run `docker compose up -d` again; the UI moves to that port, and so do the links the jobs print. PowerShell: `Set-Content -Path .env -Encoding ascii -Value "MLFLOW_PORT=5060"` |
+| A plain `docker compose build` only built the MLflow server | The jobs' container only runs on demand, so name it: `docker compose build mlflow trainer` (otherwise it is built the first time you run a job) |
 | `The model server ... didn't answer` | Start it with `docker compose --profile serve up -d serve` and wait a few seconds |
 | `... it is probably serving an older champion` | The server reads `@champion` when it starts. Restart it: `docker compose --profile serve restart serve` |
 | The UI doesn't open at localhost on Windows | Use http://127.0.0.1:5050. The ports are bound to 127.0.0.1 so they aren't reachable from your network, and some WSL setups forward `localhost` (IPv6) elsewhere |
