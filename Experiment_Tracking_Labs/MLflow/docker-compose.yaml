@@ -66,8 +66,10 @@ services:
     environment:
       <<: *no-telemetry
       MLFLOW_TRACKING_URI: http://mlflow:5000
-      # The UI's address in your browser, for the links the jobs print
+      # The UI's address in your browser, for the links the jobs print. MLflow's own links would use
+      # http://mlflow:5000, an address that only works inside Docker, so they are switched off.
       MLFLOW_UI_URL: http://localhost:${MLFLOW_PORT:-5050}
+      MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
     depends_on:
       mlflow:
         condition: service_healthy
