@@ -20,4 +20,7 @@ def load_config(path=CONFIG_PATH):
     for family in config["baselines"]:
         if family not in TRUSTED_TYPES:
             raise ValueError(f"Unknown model family {family!r} in baselines: use one of {list(TRUSTED_TYPES)}")
+    for key, value in config["tuning"].items():
+        if not isinstance(value, int) or value < 1:
+            raise ValueError(f"tuning.{key} must be a whole number of at least 1, not {value!r}")
     return config

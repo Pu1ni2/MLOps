@@ -21,3 +21,11 @@ baselines:
   logistic_regression: {C: 1.0, max_iter: 1000}
   # The original lab's baseline model, with 300 trees instead of 10 for steadier probabilities
   random_forest: {n_estimators: 300, min_samples_leaf: 2}
+
+# Searching XGBoost's settings with Optuna. Every attempt (trial) is a nested MLflow run.
+tuning:
+  trials: 40
+  # Each attempt keeps adding trees, up to max_trees, until the validation AUC hasn't improved for
+  # early_stopping_rounds trees in a row
+  max_trees: 1000
+  early_stopping_rounds: 50

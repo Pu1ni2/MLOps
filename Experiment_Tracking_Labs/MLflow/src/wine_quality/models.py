@@ -29,7 +29,8 @@ def build_model(family, params, seed):
     if family == "random_forest":
         return RandomForestClassifier(**params, random_state=seed, n_jobs=-1)
     if family == "xgboost":
-        return XGBClassifier(**params, random_state=seed)
+        # A fixed number of threads, so the results don't depend on how many cores the computer has
+        return XGBClassifier(**params, random_state=seed, n_jobs=4)
     raise ValueError(f"Unknown model family {family!r}: use one of {list(TRUSTED_TYPES)}")
 
 
