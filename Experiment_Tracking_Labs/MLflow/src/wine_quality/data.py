@@ -93,10 +93,8 @@ def log_datasets(splits):
         mlflow.log_input(mlflow.data.from_pandas(table, name=f"wines-{part}", targets=TARGET), context=part)
 
 
-def main():
-    config = load_config()
-    splits, summary = prepare(config)
-    use_experiment(config["experiment"])
+def record(splits, summary, config):
+    """Logs the split as a "prepare-data" run: its settings, the summary's counts and the three datasets."""
     with mlflow.start_run(run_name="prepare-data") as run:
         mlflow.set_tag("stage", "data")
         settings = {key: value for key, value in config["data"].items() if key != "split"}
@@ -104,7 +102,11 @@ def main():
         mlflow.log_params({"seed": config["seed"], **{f"data.{key}": value for key, value in settings.items()}})
         mlflow.log_metrics(summary)
         log_datasets(splits)
+    return run
 
+
+def print_summary(splits, summary, config, run):
+    """Prints what prepare did, and where the run is in MLflow."""
     kept_or_removed = "removed" if config["data"]["remove_duplicates"] else "kept"
     print(f"Wines: {summary['wines']:,}, of which {summary['duplicate_wines']:,} are exact copies of another wine "
           f"({kept_or_removed}), so {summary['wines_used']:,} are used")
@@ -115,6 +117,13 @@ def main():
           f"{summary['test_wines']:,}. With the duplicates kept, as in the original lab: "
           f"{summary['test_wines_seen_in_training_if_duplicates_kept']} of {summary['test_wines_if_duplicates_kept']:,}")
     print(f"Recorded in MLflow: {run_link(run)}")
+
+
+def main():
+    config = load_config()
+    splits, summary = prepare(config)
+    use_experiment(config["experiment"])
+    print_summary(splits, summary, config, record(splits, summary, config))
 
 
 if __name__ == "__main__":

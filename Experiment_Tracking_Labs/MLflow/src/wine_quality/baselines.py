@@ -14,7 +14,10 @@ from wine_quality.tracking import run_link, use_experiment
 
 
 def train_baseline(family, params, splits, seed):
-    """Trains one baseline model in its own run: settings, data, validation scores, charts and the model."""
+    """
+    Trains one baseline model in its own run: settings, data, validation scores, charts and the model.
+    Returns the run, its validation scores and the logged model's ModelInfo.
+    """
     with mlflow.start_run(run_name=f"baseline-{family}") as run:
         mlflow.set_tags({"stage": "baseline", "model_family": family})
         mlflow.log_params({"seed": seed, **params})
@@ -22,8 +25,14 @@ def train_baseline(family, params, splits, seed):
         train = splits["train"]
         model = build_model(family, params, seed).fit(train[FEATURES], train[TARGET])
         result = evaluate(model, splits["validation"], "validation", seed)
-        log_model(model, family, train[FEATURES])
-    return run, result
+        model_info = log_model(model, family, train[FEATURES])
+    return run, result, model_info
+
+
+def print_result(name, result, run):
+    print(f"  {name:<20} AUC {result['auc']:.3f}   average precision {result['average_precision']:.3f}   "
+          f"log loss {result['log_loss']:.3f}   Brier {result['brier']:.3f}")
+    print(f"  {'':<20} {run_link(run)}")
 
 
 def main():
@@ -32,10 +41,8 @@ def main():
     use_experiment(config["experiment"])
     print(f"Baselines, judged on the {len(splits['validation']):,} validation wines:")
     for family, params in config["baselines"].items():
-        run, result = train_baseline(family, params, splits, config["seed"])
-        print(f"  {family:<20} AUC {result['auc']:.3f}   average precision {result['average_precision']:.3f}   "
-              f"log loss {result['log_loss']:.3f}   Brier {result['brier']:.3f}")
-        print(f"  {'':<20} {run_link(run)}")
+        run, result, _ = train_baseline(family, params, splits, config["seed"])
+        print_result(family, result, run)
 
 
 if __name__ == "__main__":

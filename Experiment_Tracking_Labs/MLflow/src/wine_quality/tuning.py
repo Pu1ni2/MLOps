@@ -68,7 +68,7 @@ def tune_xgboost(splits, config):
     """
     The whole search in a parent run. The winning settings are then retrained, with the number of trees
     early stopping found, and logged on the parent run with their scores, charts and model.
-    Returns the parent run and the winner's validation scores.
+    Returns the parent run, the winner's validation scores and the logged model's ModelInfo.
     """
     seed, train = config["seed"], splits["train"]
     with mlflow.start_run(run_name="tune-xgboost") as run:
@@ -86,8 +86,8 @@ def tune_xgboost(splits, config):
         figure = plots.tuning_chart(attempts["validation_auc"].to_numpy(), best_baseline_auc(run.info.experiment_id))
         mlflow.log_figure(figure, "tuning/progress.png")
         plt.close(figure)
-        log_model(model, "xgboost", train[FEATURES])
-    return run, result
+        model_info = log_model(model, "xgboost", train[FEATURES])
+    return run, result, model_info
 
 
 def main():
@@ -95,7 +95,11 @@ def main():
     splits, _ = prepare(config)
     use_experiment(config["experiment"])
     print(f"Tuning XGBoost: {config['tuning']['trials']} attempts, each a nested run of 'tune-xgboost'...")
-    run, result = tune_xgboost(splits, config)
+    run, result, _ = tune_xgboost(splits, config)
+    print_tuned(run, result)
+
+
+def print_tuned(run, result):
     params = mlflow.get_run(run.info.run_id).data.params
     print(f"  best attempt {params['best_trial']}: validation AUC {result['auc']:.3f}   average precision "
           f"{result['average_precision']:.3f}   log loss {result['log_loss']:.3f}   Brier {result['brier']:.3f}")
