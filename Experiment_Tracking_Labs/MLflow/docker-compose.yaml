@@ -72,6 +72,8 @@ services:
       MLFLOW_SUPPRESS_PRINTING_URL_TO_STDOUT: "true"
       # No progress bars each time a model is downloaded from the server
       MLFLOW_ENABLE_ARTIFACTS_PROGRESS_BAR: "false"
+      # The serve container's address inside Docker, for the serving check
+      SERVE_URL: http://serve:5001
     depends_on:
       mlflow:
         condition: service_healthy
