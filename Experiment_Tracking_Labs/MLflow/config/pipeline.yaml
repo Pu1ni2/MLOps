@@ -1,0 +1,14 @@
+# Settings for the wine-quality pipeline. Every job reads this file.
+
+# The MLflow experiment that every run is logged to
+experiment: wine-quality
+
+data:
+  # A wine counts as "high quality" if its quality score (0-10, given by wine experts) is at least this
+  high_quality_from: 7
+  # 1,177 of the 6,497 wines are exact copies of another one. Kept, copies end up in both the training and
+  # the test data, so the test also measures wines the model has already seen.
+  remove_duplicates: true
+  # Shares of the wines used to train the models, to choose between them, and to judge the chosen one
+  split: {train: 0.6, validation: 0.2, test: 0.2}
+  seed: 42
