@@ -1,6 +1,6 @@
 # MLOps Labs
 
-Hands-on MLOps projects covering automated testing, CI/CD, ML workflows, pipeline orchestration and model monitoring. Each lab has its own folder.
+Hands-on MLOps projects covering automated testing, CI/CD, ML workflows, pipeline orchestration, model monitoring and experiment tracking. Each lab has its own folder.
 
 | Lab | Folder | What it covers |
 |-----|--------|----------------|
@@ -8,9 +8,10 @@ Hands-on MLOps projects covering automated testing, CI/CD, ML workflows, pipelin
 | GitHub Lab 2 | [Github_Labs/Lab2](Github_Labs/Lab2) | Spam-detection model that GitHub Actions trains, calibrates, checks against a quality gate and publishes as a versioned GitHub Release |
 | Airflow Lab 1 | [Airflow_Labs/Lab1](Airflow_Labs/Lab1) | Customer-segmentation pipeline orchestrated with Apache Airflow 3: data checks with retries, parallel training with dynamic task mapping, a quality-gate branch and settings chosen at trigger time |
 | Data Monitoring | [Data_Labs/Data_Monitoring](Data_Labs/Data_Monitoring) | Drift monitoring for an income-prediction model with Evidently: a simulated month with injected drift, daily data-quality, drift and prediction checks, performance once the delayed labels arrive, an OK / WARNING / CRITICAL gate with alerts, a dashboard defined in code, and drift thresholds calibrated on thousands of simulated days |
+| MLflow | [Experiment_Tracking_Labs/MLflow](Experiment_Tracking_Labs/MLflow) | Wine-quality models tracked on a self-hosted MLflow server: datasets with fingerprints, baselines with evaluation charts, Optuna tuning with nested runs, a champion/challenger registry gate with aliases and rollback, a verified REST API and batch scoring, and a study that reproduces the original lab's score and shows how duplicates inflated it |
 
 ## Repository layout
 
-- Each lab has its own folder, grouped by topic (`Github_Labs/`, `Airflow_Labs/`, `Data_Labs/`, more to come).
+- Each lab has its own folder, grouped by topic (`Github_Labs/`, `Airflow_Labs/`, `Data_Labs/`, `Experiment_Tracking_Labs/`, more to come).
 - All GitHub Actions workflows are in [.github/workflows](.github/workflows), because GitHub only runs workflows from there. Each workflow runs inside its own lab's folder and only starts when that lab's files change.
-- Airflow and Data labs run locally in Docker. Each one has its own `docker-compose.yaml` and a README with setup and run steps.
+- Airflow, Data and Experiment Tracking labs run locally in Docker. Each one has its own `docker-compose.yaml` and a README with setup and run steps.
