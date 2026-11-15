@@ -10,6 +10,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from sklearn.metrics import confusion_matrix, precision_recall_curve, roc_curve
 
 BLUE = "#2a78d6"
+LIGHT_BLUE = "#86b6ef"
 SURFACE, INK, SECONDARY, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 # One hue from light to dark, for counts: the more wines in a cell, the darker it is
 BLUES = LinearSegmentedColormap.from_list("blues", ["#cde2fb", "#86b6ef", "#3987e5", "#1c5cab", "#0d366b"])
@@ -82,6 +83,22 @@ def confusion_chart(truth, chance):
     axes.set(xlabel="Predicted", ylabel="Actual")
     for side in ("left", "bottom"):
         axes.spines[side].set_visible(False)
+    return figure
+
+
+def tuning_chart(scores, reference=None):
+    """Each attempt's validation AUC as a dot, the best so far as a line, and the best baseline as a grey line."""
+    attempts = np.arange(1, len(scores) + 1)
+    subtitle = f"Validation AUC of each of the {len(scores)} attempts (dots) and the best so far (line)."
+    if reference is not None:
+        subtitle += f" Grey line: the best baseline ({reference:.3f})."
+    figure, axes = new_chart("Tuning progress", subtitle)
+    if reference is not None:
+        axes.axhline(reference, color=MUTED, linewidth=1)
+    axes.scatter(attempts, scores, s=22, color=LIGHT_BLUE, edgecolors=SURFACE, linewidths=1, zorder=2)
+    axes.step(attempts, np.maximum.accumulate(scores), where="post", color=BLUE, linewidth=2, zorder=3)
+    axes.set(xlabel="Attempt", ylabel="Validation AUC", xlim=(0.5, len(scores) + 0.5))
+    axes.grid(True, axis="y")
     return figure
 
 
