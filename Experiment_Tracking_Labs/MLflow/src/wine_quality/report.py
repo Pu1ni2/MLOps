@@ -37,7 +37,7 @@ def registry_table(config):
         aliases.setdefault(str(number), []).append(f"@{alias}")
     versions = sorted(client.search_model_versions(f"name = '{name}'"), key=lambda v: int(v.version))
     return pd.DataFrame([{
-        "version": int(v.version), "aliases": " ".join(sorted(aliases.get(v.version, []))),
+        "version": int(v.version), "aliases": " ".join(sorted(aliases.get(str(v.version), []))),
         "model_family": v.tags.get("model_family"), "validation_auc": float(v.tags.get("validation_auc", "nan")),
         "test_auc": float(v.tags.get("gate.test_auc", "nan")), "test_brier": float(v.tags.get("gate.test_brier", "nan")),
         "decision": v.tags.get("gate.decision"), "reason": v.tags.get("gate.reason"),

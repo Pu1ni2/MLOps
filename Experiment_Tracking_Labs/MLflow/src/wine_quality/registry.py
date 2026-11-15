@@ -125,13 +125,14 @@ def status(config):
     if not versions:
         print(f"No versions of {name} yet: run the pipeline first.")
         return
-    # The registered model lists its aliases; search_model_versions leaves each version's aliases empty
+    # The registered model lists its aliases; search_model_versions leaves each version's aliases empty.
+    # Version numbers are strings from the server but integers from a local store, so compare them as strings.
     aliases = {}
     for alias, number in client.get_registered_model(name).aliases.items():
         aliases.setdefault(str(number), []).append(f"@{alias}")
     print(f"{name}: {len(versions)} versions")
     for version in versions:
-        aliases_shown = ", ".join(sorted(aliases.get(version.version, []))) or "-"
+        aliases_shown = ", ".join(sorted(aliases.get(str(version.version), []))) or "-"
         print(f"  version {version.version:>2}  {aliases_shown:<22} {version.tags.get('model_family', '?'):<20} "
               f"test AUC {version.tags.get('gate.test_auc', '?'):<7} {version.tags.get('gate.decision', '?')}")
     print(model_link(name))
