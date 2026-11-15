@@ -1,0 +1,4 @@
+setup,auc_all,auc_seen,auc_new,test_wines,seen_wines,new_wines
+"Original lab: 10 trees, duplicates kept",0.854,1.0,0.7848,1300,269,1031
+"300 trees, duplicates kept",0.9034,0.9999,0.856,1300,269,1031
+"This lab: 300 trees, duplicates removed",0.8488,,0.8488,1064,0,1064
